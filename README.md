@@ -1,8 +1,7 @@
-# app_restaurante
+# Aplicação em Flutter
+## Código do aplicativo
+lib/main.dart
 
-Projeto usando Flutter.
-## Getting Started
+## Dependências
+pubspec.yaml
 
-Para obter ajuda para começar a desenvolver o Flutter, consulte o
-[documentação online](https://docs.flutter.dev), que oferece tutoriais,
-exemplos, orientações sobre desenvolvimento móvel e uma referência completa da API.
