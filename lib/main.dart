@@ -45,7 +45,7 @@ class AppData extends ChangeNotifier {
     'Organização Eficiente': true,
     'Atendimento Lento': false,
     'Demora na Limpeza': false,
-    'Filas Confusas': false,
+    'Filas Grandes': false,
     'Ambiente Limpo': true,
     'Climatização Boa': true,
     'Ambiente Silencioso': true,
@@ -725,7 +725,7 @@ class DetailedFeedbackTab extends StatelessWidget {
     'Serviço Negativa': [
       'Atendimento Lento',
       'Demora na Limpeza',
-      'Filas Confusas',
+      'Filas Grandes',
     ],
     'Ambiente Positiva': [
       'Ambiente Limpo',
@@ -934,7 +934,7 @@ class StatisticsScreen extends StatelessWidget {
       'Organização Eficiente': true,
       'Atendimento Lento': false,
       'Demora na Limpeza': false,
-      'Filas Confusas': false,
+      'Filas Grandes': false,
       'Ambiente Limpo': true,
       'Climatização Boa': true,
       'Ambiente Silencioso': true,
