@@ -506,7 +506,7 @@ class _RatingScreenState extends State<RatingScreen> {
                       const Text(
                         'Qual sua nota geral?',
                         style: TextStyle(
-                          fontSize: 25,
+                          fontSize: 30,
                           fontWeight: FontWeight.w600,
                         ),
                         textAlign: TextAlign.center,
@@ -592,7 +592,7 @@ class _RatingScreenState extends State<RatingScreen> {
                                             child: Text(
                                               currentEmoji,
                                               style: const TextStyle(
-                                                fontSize: 32,
+                                                fontSize: 45,
                                               ),
                                             ),
                                           );
@@ -620,6 +620,15 @@ class _RatingScreenState extends State<RatingScreen> {
                       unselectedLabelColor:
                           Colors.black54, //#3f4533, #e2e0d1, #39422f
                       indicatorColor: Color(0xFF3F4533), //Colors.blueAccent
+                      // ✅ MUDANÇA AQUI: Aplicando o estilo ao texto das abas
+                      labelStyle: TextStyle(
+                        fontSize: 18.0,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      unselectedLabelStyle: TextStyle(
+                        fontSize: 18.0,
+                        fontWeight: FontWeight.normal,
+                      ),
                       tabs: [
                         Tab(text: 'Feedback Positivo'),
                         Tab(text: 'Feedback Negativo'),
@@ -746,41 +755,39 @@ class DetailedFeedbackTab extends StatelessWidget {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20.0),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: categories
-                .map(
-                  (c) => Expanded(
-                    child: Center(
-                      child: Text(
-                        c,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
+        crossAxisAlignment: CrossAxisAlignment
+            .center, // ✅ MUDANÇA: Centraliza o conteúdo (as colunas)
+        children: categories.map((category) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 30.0),
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.center, // Centraliza o conteúdo da coluna
+              children: [
+                // 1. TÍTULO DA CATEGORIA
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12.0),
+                  child: Text(
+                    category,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20.0, // Título principal
                     ),
                   ),
-                )
-                .toList(),
-          ),
-          const SizedBox(height: 17),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: categories
-                .map(
-                  (category) => Expanded(
-                    child: CategoryFeedbackColumn(
-                      category: category,
-                      sentiment: sentiment,
-                      phrases: _phrases,
-                      onPhraseSelected: onPhraseSelected,
-                      selectedPhrases: selectedPhrases,
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
-        ],
+                ),
+
+                // 2. BOTÕES DE FEEDBACK (Chamada para a coluna de botões)
+                CategoryFeedbackColumn(
+                  category: category,
+                  sentiment: sentiment,
+                  phrases: _phrases,
+                  onPhraseSelected: onPhraseSelected,
+                  selectedPhrases: selectedPhrases,
+                ),
+              ],
+            ),
+          );
+        }).toList(),
       ),
     );
   }
@@ -822,7 +829,11 @@ class CategoryFeedbackColumn extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4.0),
-      child: Column(
+      child: Wrap(
+        spacing: 12.0, // Espaço entre os botões na mesma linha
+        runSpacing: 10.0, // Espaço entre as linhas
+        alignment: WrapAlignment
+            .center, // ✅ MUDANÇA CRUCIAL: Centraliza os botões horizontalmente
         children: currentPhrases
             .map(
               (phrase) => ConstrainedBox(
@@ -861,6 +872,19 @@ class CategoryFeedbackColumn extends StatelessWidget {
         : Colors.red.shade700;
     final Color unselectedTextColor = Colors.black87;
 
+    // ✅ NOVIDADE: LÓGICA DE QUEBRA DE LINHA CONTROLADA
+    String formattedPhrase = phrase;
+    int firstSpaceIndex = phrase.indexOf(' ');
+
+    if (firstSpaceIndex != -1) {
+      // Encontra o primeiro espaço e substitui por uma quebra de linha
+      formattedPhrase =
+          phrase.substring(0, firstSpaceIndex) +
+          '\n' +
+          phrase.substring(firstSpaceIndex + 1);
+    }
+    // FIM DA NOVIDADE
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
       // MUDANÇA PRINCIPAL: Usamos um GestureDetector para capturar o toque
@@ -891,10 +915,10 @@ class CategoryFeedbackColumn extends StatelessWidget {
           ), // Padding interno confortável
 
           child: Text(
-            phrase,
+            formattedPhrase, // ✅ UTILIZA A STRING FORMATADA AQUI
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 15.0,
+              fontSize: 19.0,
               color: isSelected ? Colors.white : unselectedTextColor,
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
             ),
@@ -1110,7 +1134,15 @@ class StatisticsScreen extends StatelessWidget {
         .toList();
   }
 
-  // Legenda para o Gráfico de Estrelas (MUDANÇA nos parâmetros)
+  static List<String> _sentimentLabels = [
+    'Péssimo',
+    'Ruim',
+    'Neutro',
+    'Bom',
+    'Excelente',
+  ];
+
+  // SUBSTITUA O MÉTODO _buildStarLegend INTEIRO
   Widget _buildStarLegend(
     AppData appData,
     Map<int, int> starRatings,
@@ -1122,11 +1154,13 @@ class StatisticsScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
-        // MUDANÇA: Usa starRatings.entries em vez de appData.ratingsCount.entries
         children: starRatings.entries.map((entry) {
           final int star = entry.key;
           final int count = entry.value;
           final double percentage = total > 0 ? (count / total) * 100 : 0;
+
+          // ✅ NOVIDADE: Pega o rótulo de sentimento (index 0 = 1 estrela)
+          final String label = _sentimentLabels[star - 1];
 
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 4.0),
@@ -1140,7 +1174,8 @@ class StatisticsScreen extends StatelessWidget {
                   margin: const EdgeInsets.only(right: 20),
                 ),
                 Text(
-                  '${star} Estrela(s): ${count}',
+                  // ✅ NOVIDADE: Usa o RÓTULO e mostra a contagem
+                  '$label: ${count}',
                   style: const TextStyle(fontSize: 16),
                 ),
               ],
