@@ -309,6 +309,12 @@ class _AppTabsControllerState extends State<AppTabsController> {
           _selectedIndex == 0
               ? 'Avaliação do Restaurante (Turno $_currentShift)' // Exibe o turno no título
               : 'Estatísticas das Avaliações (Turno $_currentShift)',
+          style: const TextStyle(
+            fontSize: 24.0, // Aumentado para 24.0
+            fontWeight: FontWeight.bold,
+            color: Colors
+                .white, // Garante que o texto fique branco contra o fundo escuro
+          ),
         ),
         backgroundColor: Color.fromARGB(255, 111, 136, 63), //Colors.blueAccent
         elevation: 4,
@@ -348,8 +354,16 @@ class _AppTabsControllerState extends State<AppTabsController> {
             label: 'Estatísticas',
           ),
         ],
+        // ✅ NOVIDADE: Aumenta o tamanho da fonte para 16 (ou o valor desejado)
+        selectedLabelStyle: const TextStyle(
+          fontSize: 16.0,
+          fontWeight: FontWeight.bold,
+        ),
+        unselectedLabelStyle: const TextStyle(
+          fontSize: 14.0,
+        ), // Opção: deixar a não selecionada um pouco menor
         currentIndex: _selectedIndex,
-        selectedItemColor: Colors.blueAccent,
+        selectedItemColor: Colors.green.shade700, //Colors.blueAccent
         onTap: _onItemTapped,
       ),
     );
@@ -592,7 +606,7 @@ class _RatingScreenState extends State<RatingScreen> {
                                             child: Text(
                                               currentEmoji,
                                               style: const TextStyle(
-                                                fontSize: 45,
+                                                fontSize: 50,
                                               ),
                                             ),
                                           );
@@ -693,7 +707,7 @@ class _RatingScreenState extends State<RatingScreen> {
                       ),
                       child: const Text(
                         'Enviar Avaliação',
-                        style: TextStyle(fontSize: 20, color: Colors.white),
+                        style: TextStyle(fontSize: 25, color: Colors.white),
                       ),
                     ),
                   ),
@@ -755,39 +769,44 @@ class DetailedFeedbackTab extends StatelessWidget {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20.0),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment
-            .center, // ✅ MUDANÇA: Centraliza o conteúdo (as colunas)
-        children: categories.map((category) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 30.0),
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.center, // Centraliza o conteúdo da coluna
-              children: [
-                // 1. TÍTULO DA CATEGORIA
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12.0),
-                  child: Text(
-                    category,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 20.0, // Título principal
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: categories
+                .map(
+                  (c) => Expanded(
+                    child: Center(
+                      child: Text(
+                        c,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18.0, // ✅ MUDANÇA APLICADA AQUI (18.0)
+                        ),
+                      ),
                     ),
                   ),
-                ),
-
-                // 2. BOTÕES DE FEEDBACK (Chamada para a coluna de botões)
-                CategoryFeedbackColumn(
-                  category: category,
-                  sentiment: sentiment,
-                  phrases: _phrases,
-                  onPhraseSelected: onPhraseSelected,
-                  selectedPhrases: selectedPhrases,
-                ),
-              ],
-            ),
-          );
-        }).toList(),
+                )
+                .toList(),
+          ),
+          const SizedBox(height: 17),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: categories
+                .map(
+                  (category) => Expanded(
+                    child: CategoryFeedbackColumn(
+                      category: category,
+                      sentiment: sentiment,
+                      phrases: _phrases,
+                      onPhraseSelected: onPhraseSelected,
+                      selectedPhrases: selectedPhrases,
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ],
       ),
     );
   }
@@ -829,11 +848,7 @@ class CategoryFeedbackColumn extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4.0),
-      child: Wrap(
-        spacing: 12.0, // Espaço entre os botões na mesma linha
-        runSpacing: 10.0, // Espaço entre as linhas
-        alignment: WrapAlignment
-            .center, // ✅ MUDANÇA CRUCIAL: Centraliza os botões horizontalmente
+      child: Column(
         children: currentPhrases
             .map(
               (phrase) => ConstrainedBox(
@@ -993,14 +1008,14 @@ class StatisticsScreen extends StatelessWidget {
               children: [
                 // 1. TÍTULO CENTRALIZADO
                 const Text(
-                  'Distribuição de Estrelas (Geral)',
-                  style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
+                  'Distribuição de Reações (Geral)',
+                  style: TextStyle(fontSize: 35, fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
                 Text(
                   // MUDANÇA: Usa o total filtrado
                   'Total de Avaliações: $totalRatings',
-                  style: TextStyle(fontSize: 18, color: Colors.grey[700]),
+                  style: TextStyle(fontSize: 22, color: Colors.grey[700]),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 32),
@@ -1079,14 +1094,14 @@ class StatisticsScreen extends StatelessWidget {
                 // 3. DETALHES (Frequência)
                 const Text(
                   'Frequência dos Detalhes',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
                   textAlign: TextAlign.left,
                 ),
                 // NOVIDADE: Subtítulo com a contagem total
                 Text(
                   // MUDANÇA: Usa o total filtrado
                   'Total de Feedbacks: $totalDetailedFeedbacks',
-                  style: TextStyle(fontSize: 16, color: Colors.grey[700]),
+                  style: TextStyle(fontSize: 19, color: Colors.grey[700]),
                   textAlign: TextAlign.left,
                 ),
                 const SizedBox(height: 15), // espaço entre título e lista
@@ -1176,7 +1191,7 @@ class StatisticsScreen extends StatelessWidget {
                 Text(
                   // ✅ NOVIDADE: Usa o RÓTULO e mostra a contagem
                   '$label: ${count}',
-                  style: const TextStyle(fontSize: 16),
+                  style: const TextStyle(fontSize: 20),
                 ),
               ],
             ),
@@ -1218,11 +1233,15 @@ class StatisticsScreen extends StatelessWidget {
                       ? Colors.green.shade800
                       : Colors.red.shade800,
                   fontWeight: FontWeight.w500,
+                  fontSize: 16.0, // ✅ MUDANÇA: Aumentado para 16.0
                 ),
               ),
               Text(
                 _getDetailCountText(entry.value),
-                style: const TextStyle(fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16.0,
+                ), // ✅ MUDANÇA: Aumentado para 16.0
               ),
             ],
           ),
