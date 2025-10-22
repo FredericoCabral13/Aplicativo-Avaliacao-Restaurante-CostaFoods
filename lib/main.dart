@@ -606,7 +606,7 @@ class _RatingScreenState extends State<RatingScreen> {
                                             child: Text(
                                               currentEmoji,
                                               style: const TextStyle(
-                                                fontSize: 50,
+                                                fontSize: 70,
                                               ),
                                             ),
                                           );

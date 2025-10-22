@@ -1,0 +1,6 @@
+{
+  "editor.formatOnSave": true,
+  "editor.formatOnPaste": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "cmake.sourceDirectory": "C:/Users/fcabr/Aplicativo-Avaliacao-Restaurante-CostaFoods/windows/runner"
+}
