@@ -246,6 +246,9 @@ class _AppTabsControllerState extends State<AppTabsController> {
   int _selectedIndex = 0;
   int _currentShift = 1; // Estado do turno atual (1 ou 2)
 
+  int? _selectedRatingFromHome;
+  int? _initialTabIndex;
+
   // 1. Lógica para determinar o turno padrão baseado no horário atual
   int _calculateDefaultShift() {
     final hour = DateTime.now().hour;
@@ -277,8 +280,10 @@ class _AppTabsControllerState extends State<AppTabsController> {
           _selectedIndex = index;
           _currentShift = defaultShift;
         });
+        _resetHomeScreen();
         return; // Sai da função
       }
+      _resetHomeScreen(); // Reseta a tela de avaliação
     }
 
     // Comportamento padrão (se não houve reset de turno):
@@ -294,12 +299,40 @@ class _AppTabsControllerState extends State<AppTabsController> {
     });
   }
 
+  void _navigateToFeedbackScreen(int rating, int tabIndex) {
+    // ✅ ADICIONE uma animação suave:
+    Future.delayed(Duration.zero, () {
+      setState(() {
+        _selectedRatingFromHome = rating;
+        _initialTabIndex = tabIndex;
+        _selectedIndex = 1;
+      });
+    });
+  }
+
+  void _resetHomeScreen() {
+    setState(() {
+      _selectedRatingFromHome = null;
+      _initialTabIndex = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     // CORREÇÃO: Definição da lista DENTRO do método build, onde ela é usada.
     // MUDANÇA: Passa o 'currentShift' para as telas filhas.
     final List<Widget> widgetOptions = <Widget>[
-      RatingScreen(currentShift: _currentShift),
+      RatingSelectionScreen(
+        onRatingSelected: _navigateToFeedbackScreen,
+        selectedRating: _selectedRatingFromHome,
+        currentShift: _currentShift,
+      ), // // NOVO: Tela de emojis (NOVO ÍNDICE 0)
+      RatingScreen(
+        currentShift: _currentShift,
+        initialRating: _selectedRatingFromHome ?? 0,
+        initialTabIndex: _initialTabIndex ?? 0,
+        onBackToHome: _resetHomeScreen, // ✅ ADICIONE ESTE PARÂMETRO
+      ),
       StatisticsScreen(currentShift: _currentShift),
     ];
 
@@ -318,26 +351,37 @@ class _AppTabsControllerState extends State<AppTabsController> {
         ),
         backgroundColor: Color.fromARGB(255, 111, 136, 63), //Colors.blueAccent
         elevation: 4,
-        actions: [
-          // Menu Clicável no Canto Superior Direito
-          PopupMenuButton<int>(
-            onSelected: _selectShift,
-            itemBuilder: (BuildContext context) => <PopupMenuEntry<int>>[
-              const PopupMenuItem<int>(
-                value: 1,
-                child: Text('Turno 1 (Manhã/Tarde)'),
-              ),
-              const PopupMenuItem<int>(
-                value: 2,
-                child: Text('Turno 2 (Noite/Madrugada)'),
-              ),
-            ],
-            icon: const Icon(
-              Icons.access_time_filled,
-              color: Colors.white,
-            ), // Ícone do relógio/turno
-          ),
-        ],
+        actions: _selectedIndex == 1
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.emoji_emotions, color: Colors.white),
+                  onPressed: () {
+                    setState(() {
+                      _selectedIndex = 0;
+                    });
+                    _resetHomeScreen();
+                  },
+                ),
+              ]
+            : [
+                PopupMenuButton<int>(
+                  onSelected: _selectShift,
+                  itemBuilder: (BuildContext context) => <PopupMenuEntry<int>>[
+                    const PopupMenuItem<int>(
+                      value: 1,
+                      child: Text('Turno 1 (Manhã/Tarde)'),
+                    ),
+                    const PopupMenuItem<int>(
+                      value: 2,
+                      child: Text('Turno 2 (Noite/Madrugada)'),
+                    ),
+                  ],
+                  icon: const Icon(
+                    Icons.access_time_filled,
+                    color: Colors.white,
+                  ), // Ícone do relógio/turno
+                ),
+              ],
       ),
       body: Center(
         child: widgetOptions.elementAt(_selectedIndex),
@@ -346,8 +390,14 @@ class _AppTabsControllerState extends State<AppTabsController> {
         items: const <BottomNavigationBarItem>[
           // ... (Itens da barra de navegação)
           BottomNavigationBarItem(
-            icon: Icon(Icons.star_rate),
-            label: 'Avaliação',
+            icon: Icon(
+              Icons.insert_emoticon_rounded,
+            ), // Ícone de casa ou outro de sua preferência
+            label: 'Avaliações', // Rótulo da nova aba
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.task_alt_rounded),
+            label: 'Feedbacks',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.bar_chart),
@@ -374,26 +424,55 @@ class _AppTabsControllerState extends State<AppTabsController> {
 // ===================================================================
 
 class RatingScreen extends StatefulWidget {
+  // ✅ ADICIONADO: Recebe a nota inicial e o índice da aba
   final int currentShift;
-  const RatingScreen({super.key, required this.currentShift});
+  final int initialRating;
+  final int initialTabIndex;
+
+  final VoidCallback onBackToHome;
+
+  const RatingScreen({
+    super.key,
+    required this.currentShift,
+    required this.initialRating,
+    required this.initialTabIndex,
+    required this.onBackToHome,
+  });
 
   @override
   State<RatingScreen> createState() => _RatingScreenState();
 }
 
 class _RatingScreenState extends State<RatingScreen> {
+  // O TabController foi removido na versão anterior, então mantemos este layout.
+  late TabController _tabController; // Vai ser inicializado no initState
+
+  // Variáveis de estado
   double _detailedOpacity = 0.0;
   bool _showDetailed = true;
   int _selectedStars = 0;
-
   final Set<String> _pendingDetailedPhrases = {};
 
   // NOVIDADE: Controller para o campo de texto do comentário
   final TextEditingController _commentController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+
+    // ✅ CORREÇÃO: Inicializa com o valor passado ou usa 0 como padrão.
+    _selectedStars = widget.initialRating ?? 0;
+
+    // Define a aba inicial com o valor passado ou usa 0 (Positivo) como padrão.
+    final int initialTab =
+        widget.initialTabIndex ?? ((_selectedStars >= 4) ? 0 : 1);
+
+    // O código aqui presume que o DefaultTabController está no build.
+  }
+
+  @override
   void dispose() {
-    _commentController.dispose(); // IMPORTANTE: Lançar o controller
+    _commentController.dispose();
     super.dispose();
   }
 
@@ -473,11 +552,13 @@ class _RatingScreenState extends State<RatingScreen> {
       _pendingDetailedPhrases.clear();
       _commentController.clear();
     });
+    widget.onBackToHome();
   }
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
+      initialIndex: widget.initialTabIndex,
       length: 2,
       child: Stack(
         children: [
@@ -512,118 +593,8 @@ class _RatingScreenState extends State<RatingScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Estrelas (Sempre visível)
-                Padding(
-                  padding: const EdgeInsets.only(top: 16.0),
-                  child: Column(
-                    children: [
-                      const Text(
-                        'Qual sua nota geral?',
-                        style: TextStyle(
-                          fontSize: 30,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Botões de Estrela
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(5, (index) {
-                          final int starValue = index + 1;
-                          final bool isSelected = starValue == _selectedStars;
-
-                          const List<String> ratingEmojis = [
-                            '😠',
-                            '😟',
-                            '😐',
-                            '🙂',
-                            '😍',
-                          ];
-                          final String currentEmoji = ratingEmojis[index];
-
-                          // NOVO: Adiciona um espaçador entre os botões (exceto o último)
-                          final bool isLast = index == 4;
-
-                          return Padding(
-                            padding: EdgeInsets.only(
-                              right: isLast ? 0 : 16.0,
-                            ), // ✅ AUMENTA ESPAÇAMENTO LATERAL
-                            child: Builder(
-                              builder: (tabContext) {
-                                return IconButton(
-                                  onPressed: () {
-                                    _handleStarClick(starValue, tabContext);
-                                    int targetIndex = (starValue >= 4) ? 0 : 1;
-                                    DefaultTabController.of(
-                                      tabContext,
-                                    ).animateTo(targetIndex);
-                                  },
-                                  padding: const EdgeInsets.all(
-                                    8.0,
-                                  ), // ✅ Padding interno para a área amarela
-                                  // MUDANÇA CRUCIAL NO ESTILO:
-                                  style: ButtonStyle(
-                                    // 1. REMOVE A BORDA QUADRADA/RETANGULAR
-                                    side: WidgetStateProperty.all(
-                                      BorderSide.none,
-                                    ), // ✅ SEM BORDAS
-                                    // 2. FUNDO: Amarelo suave se selecionado, Transparente caso contrário
-                                    backgroundColor:
-                                        WidgetStateProperty.resolveWith<Color?>(
-                                          (Set<WidgetState> states) {
-                                            return isSelected
-                                                ? Colors.amber.withOpacity(0.3)
-                                                : Colors.transparent;
-                                          },
-                                        ),
-
-                                    // 3. SHAPE: Usa forma CIRCULAR
-                                    shape: WidgetStateProperty.all<OutlinedBorder>(
-                                      const CircleBorder(), // ✅ BOTÃO FICA REDONDO
-                                    ),
-                                    overlayColor: WidgetStateProperty.all(
-                                      Colors.transparent,
-                                    ),
-                                  ),
-
-                                  // Animação do Emoji
-                                  icon: TweenAnimationBuilder<double>(
-                                    tween: Tween<double>(
-                                      begin: 1.0,
-                                      end: isSelected ? 1.2 : 1.0,
-                                    ),
-                                    duration: const Duration(milliseconds: 200),
-                                    builder:
-                                        (
-                                          BuildContext context,
-                                          double scale,
-                                          Widget? child,
-                                        ) {
-                                          return Transform.scale(
-                                            scale: scale,
-                                            child: Text(
-                                              currentEmoji,
-                                              style: const TextStyle(
-                                                fontSize: 70,
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                  ),
-                                );
-                              },
-                            ),
-                          );
-                        }),
-                      ),
-                    ],
-                  ),
-                ),
-
                 // DETALHES E ABAS: Aparecem SOMENTE após a seleção da estrela
-                if (_selectedStars > 0) ...[
+                if (true) ...[
                   const Divider(height: 30),
 
                   // TAB BAR
@@ -693,7 +664,7 @@ class _RatingScreenState extends State<RatingScreen> {
                   const Expanded(child: SizedBox.shrink()),
 
                 // BOTÃO DE ENVIO: Aparece SOMENTE após a seleção da estrela
-                if (_selectedStars > 0)
+                if (true)
                   Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: ElevatedButton(
@@ -1247,6 +1218,214 @@ class StatisticsScreen extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+// Mantenha esta cor institucional definida no topo do seu main.dart
+const Color costaFoodsColor = Color(0xFF3F4533);
+
+// NOVO WIDGET (Substitui HelloScreen): A tela inicial de seleção da nota
+class RatingSelectionScreen extends StatefulWidget {
+  final Function(int, int) onRatingSelected;
+  final int? selectedRating;
+  final int currentShift;
+
+  const RatingSelectionScreen({
+    super.key,
+    required this.onRatingSelected, // ✅ ADICIONE
+    this.selectedRating, // ✅ ADICIONE
+    required this.currentShift,
+  });
+
+  @override
+  State<RatingSelectionScreen> createState() => _RatingSelectionScreenState();
+}
+
+class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
+  int _selectedStars = 0; // Estado para armazenar a seleção
+
+  // Mapeamento dos emojis
+  final List<String> _ratingEmojis = const ['😠', '😟', '😐', '🙂', '😍'];
+
+  void _handleEmojiClick(int star) {
+    setState(() {
+      _selectedStars = star;
+    });
+
+    // Determina a aba inicial baseada na avaliação
+    final int initialTab = (star >= 4) ? 0 : 1;
+    int targetTab;
+    if (star >= 4) {
+      targetTab = 0; // Aba "Feedback Positivo"
+    } else {
+      targetTab = 1; // Aba "Feedback Negativo"
+    }
+    // ✅ ADICIONE um pequeno delay para ver a animação:
+    Future.delayed(const Duration(milliseconds: 300), () {
+      // Determina a aba inicial baseada na avaliação
+      final int initialTab = (star >= 4) ? 0 : 1;
+
+      // Navega automaticamente para a tela de feedbacks
+      widget.onRatingSelected(star, initialTab);
+    });
+  }
+
+  // Função para navegar para a tela de detalhes após a seleção (será chamada no build)
+  void _navigateToDetails(int starValue) {
+    // 1. Determina a aba de detalhes correta
+    final int initialTab = (starValue >= 4) ? 0 : 1;
+
+    widget.onRatingSelected(_selectedStars, initialTab);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // ⚠️ ATENÇÃO: Esta estrutura deve ser adaptada para ser a TELA DE AVALIAÇÃO DO ÍNDICE 0.
+
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Lista vertical dos Emojis
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text(
+                'Qual sua experiência geral?',
+                style: TextStyle(fontSize: 44, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 40),
+              ...List.generate(5, (index) {
+                final int starValue = index + 1;
+                final String currentEmoji = _ratingEmojis[index];
+                final bool isSelected = starValue == _selectedStars;
+
+                final List<String> legendas = [
+                  'Péssimo',
+                  'Ruim',
+                  'Neutro',
+                  'Bom',
+                  'Excelente',
+                ];
+                final String legendaAtual = legendas[index];
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Container(
+                    width: 500,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        // Container para o emoji
+                        Container(
+                          width: 100,
+                          alignment: Alignment.centerRight,
+                          child: IconButton(
+                            onPressed: () => _handleEmojiClick(starValue),
+                            padding: const EdgeInsets.all(8.0),
+                            style: ButtonStyle(
+                              side: WidgetStateProperty.all(BorderSide.none),
+                              backgroundColor:
+                                  WidgetStateProperty.resolveWith<Color?>((
+                                    Set<WidgetState> states,
+                                  ) {
+                                    return isSelected
+                                        ? Colors.amber.withOpacity(0.3)
+                                        : Colors.transparent;
+                                  }),
+                              shape: WidgetStateProperty.all<OutlinedBorder>(
+                                const CircleBorder(),
+                              ),
+                              overlayColor: WidgetStateProperty.all(
+                                Colors.transparent,
+                              ),
+                              elevation:
+                                  WidgetStateProperty.resolveWith<double?>((
+                                    Set<WidgetState> states,
+                                  ) {
+                                    return isSelected ? 8.0 : 0.0;
+                                  }),
+                              shadowColor: WidgetStateProperty.all(
+                                Colors.black.withOpacity(0.3),
+                              ),
+                            ),
+                            icon: TweenAnimationBuilder<double>(
+                              tween: Tween<double>(
+                                begin: 1.0,
+                                end: isSelected ? 1.2 : 1.0,
+                              ),
+                              duration: const Duration(milliseconds: 200),
+                              builder:
+                                  (
+                                    BuildContext context,
+                                    double scale,
+                                    Widget? child,
+                                  ) {
+                                    return Transform.scale(
+                                      scale: scale,
+                                      child: Text(
+                                        currentEmoji,
+                                        style: const TextStyle(fontSize: 110),
+                                      ),
+                                    );
+                                  },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 70),
+                        // Container para a legenda E contador
+                        Container(
+                          width: 200,
+                          alignment: Alignment.centerLeft,
+                          child: Consumer<AppData>(
+                            builder: (context, appData, child) {
+                              // ✅ Obtém o número de avaliações para este emoji/estrela
+                              final starRatings = appData.getStarRatings(
+                                widget.currentShift,
+                              );
+                              final int count = starRatings[starValue] ?? 0;
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    legendaAtual,
+                                    style: TextStyle(
+                                      fontSize: 40,
+                                      fontWeight: FontWeight.w500,
+                                      color: isSelected
+                                          ? Colors.black
+                                          : Colors.grey[700],
+                                    ),
+                                  ),
+                                  // ✅ ADICIONE o contador de avaliações
+                                  Text(
+                                    count == 1
+                                        ? '(${count} avaliação)' // ✅ SINGULAR quando for 1
+                                        : '(${count} avaliações)', // ✅ PLURAL quando for 0 ou mais de 1
+                                    style: TextStyle(
+                                      fontSize: 25,
+                                      color: Colors.grey[600],
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
