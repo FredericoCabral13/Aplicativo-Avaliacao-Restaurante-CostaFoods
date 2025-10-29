@@ -343,6 +343,74 @@ class AppData extends ChangeNotifier {
 
     return dailyCounts;
   }
+
+  // Método para calcular a média das avaliações por dia
+  Map<DateTime, double> getLast7DaysAverageRatings(int shift) {
+    final dailyData = getLast7DaysStarRatings(shift);
+    final Map<DateTime, double> averages = {};
+
+    for (var entry in dailyData.entries) {
+      final day = entry.key;
+      final dayData = entry.value;
+
+      int totalRatings = 0;
+      int sum = 0;
+
+      for (int star = 1; star <= 5; star++) {
+        final count = dayData[star] ?? 0;
+        totalRatings += count;
+        sum += star * count;
+      }
+
+      averages[day] = totalRatings > 0 ? sum / totalRatings : 0.0;
+    }
+
+    return averages;
+  }
+
+  // Método para obter a categoria mais avaliada por dia
+  Map<DateTime, Map<String, dynamic>> getLast7DaysMostRated(int shift) {
+    final dailyData = getLast7DaysStarRatings(shift);
+    final Map<DateTime, Map<String, dynamic>> mostRated = {};
+
+    for (var entry in dailyData.entries) {
+      final day = entry.key;
+      final dayData = entry.value;
+
+      int maxCount = 0;
+      int mostRatedStar = 0;
+
+      for (int star = 1; star <= 5; star++) {
+        final count = dayData[star] ?? 0;
+        if (count > maxCount) {
+          maxCount = count;
+          mostRatedStar = star;
+        }
+      }
+
+      mostRated[day] = {'star': mostRatedStar, 'count': maxCount};
+    }
+
+    return mostRated;
+  }
+
+  // ✅ MÉTODO PARA CONVERTER NÚMERO PARA NOME DA CATEGORIA
+  String getCategoryName(int stars) {
+    switch (stars) {
+      case 1:
+        return 'Péssimo';
+      case 2:
+        return 'Ruim';
+      case 3:
+        return 'Neutro';
+      case 4:
+        return 'Bom';
+      case 5:
+        return 'Excelente';
+      default:
+        return '$stars estrelas';
+    }
+  }
 }
 
 // ===================================================================
@@ -1049,9 +1117,23 @@ class CategoryFeedbackColumn extends StatelessWidget {
 // TELA 2: ESTATÍSTICAS (Gráfico)
 // ===================================================================
 
-class StatisticsScreen extends StatelessWidget {
+class StatisticsScreen extends StatefulWidget {
   final int currentShift;
   const StatisticsScreen({super.key, required this.currentShift});
+
+  @override
+  State<StatisticsScreen> createState() => _StatisticsScreenState();
+}
+
+class _StatisticsScreenState extends State<StatisticsScreen> {
+  // ✅ ADICIONE: Estado para controlar o tipo de gráfico
+  String _selectedView = 'Total'; // 'Total', 'Média', 'MaisAvaliado'
+
+  void _changeView(String view) {
+    setState(() {
+      _selectedView = view;
+    });
+  }
 
   String _getDetailCountText(int count) {
     if (count == 1) {
@@ -1085,12 +1167,64 @@ class StatisticsScreen extends StatelessWidget {
     return phrasesMap[phrase] ?? false;
   }
 
+  // ✅ MÉTODO PARA CONVERTER NÚMERO PARA NOME DA CATEGORIA
+  String getCategoryName(int stars) {
+    switch (stars) {
+      case 1:
+        return 'Péssimo';
+      case 2:
+        return 'Ruim';
+      case 3:
+        return 'Neutro';
+      case 4:
+        return 'Bom';
+      case 5:
+        return 'Excelente';
+      default:
+        return '$stars estrelas';
+    }
+  }
+
+  // ✅ ADICIONE os botões de controle
+  Widget _buildViewSelector() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildViewButton('Total', _selectedView == 'Total'),
+        const SizedBox(width: 10),
+        _buildViewButton('Média', _selectedView == 'Média'),
+        const SizedBox(width: 10),
+        // ✅ CORREÇÃO: Mude para 'MaisAvaliado' (sem espaço)
+        _buildViewButton('Mais Avaliado', _selectedView == 'Mais Avaliado'),
+      ],
+    );
+  }
+
+  Widget _buildViewButton(String text, bool isSelected) {
+    return ElevatedButton(
+      onPressed: () => _changeView(text),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: isSelected
+            ? const Color.fromARGB(255, 111, 136, 63)
+            : Colors.grey[300],
+        foregroundColor: isSelected ? Colors.white : Colors.black,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final int selectedShift = currentShift; // Obtém o turno atual
+    final int selectedShift = widget.currentShift;
     return Consumer<AppData>(
       builder: (context, appData, child) {
-        // ✅ SUBSTITUA pelos métodos do dia atual:
         final starRatings = appData.getTodayStarRatings(selectedShift);
         final detailedRatings = appData.getTodayDetailedRatings(selectedShift);
         final totalRatings = appData.getTodayTotalStarRatings(selectedShift);
@@ -1100,13 +1234,12 @@ class StatisticsScreen extends StatelessWidget {
           (sum, count) => sum + count,
         );
 
-        // ✅ ADICIONE um indicador de que são dados do dia:
         final now = DateTime.now();
         final todayFormatted = '${now.day}/${now.month}/${now.year}';
         return Align(
           alignment: Alignment.topLeft,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(56.0), //distância da borda superior
+            padding: const EdgeInsets.all(56.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisAlignment: MainAxisAlignment.start,
@@ -1117,14 +1250,13 @@ class StatisticsScreen extends StatelessWidget {
                   style: TextStyle(fontSize: 35, fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
-                // ✅ ADICIONE a data atual:
                 Text(
                   'Data: $todayFormatted - Total de Avaliações: $totalRatings',
                   style: TextStyle(fontSize: 18, color: Colors.grey[700]),
                   textAlign: TextAlign.center,
                 ),
-
                 const SizedBox(height: 32),
+
                 // 2. GRÁFICO + LEGENDA (responsivo)
                 LayoutBuilder(
                   builder: (context, constraints) {
@@ -1139,11 +1271,10 @@ class StatisticsScreen extends StatelessWidget {
                           )
                         : PieChart(
                             PieChartData(
-                              // MUDANÇA: Passa os dados filtrados
                               sections: _buildStarSections(
                                 appData,
-                                starRatings, // Passa starRatings
-                                totalRatings, // Passa totalRatings
+                                starRatings,
+                                totalRatings,
                                 isWide ? 217 : 200,
                               ),
                               sectionsSpace: isWide ? 4 : 0,
@@ -1166,7 +1297,6 @@ class StatisticsScreen extends StatelessWidget {
                             const SizedBox(width: 50),
                             SizedBox(
                               width: 200,
-                              // MUDANÇA: Passa os dados filtrados
                               child: _buildStarLegend(
                                 appData,
                                 starRatings,
@@ -1186,7 +1316,6 @@ class StatisticsScreen extends StatelessWidget {
                             child: pieChartWidget,
                           ),
                           const SizedBox(height: 16),
-                          // MUDANÇA: Passa os dados filtrados
                           _buildStarLegend(appData, starRatings, totalRatings),
                         ],
                       );
@@ -1203,20 +1332,34 @@ class StatisticsScreen extends StatelessWidget {
                   style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
                   textAlign: TextAlign.left,
                 ),
-                // NOVIDADE: Subtítulo com a contagem total
                 Text(
-                  // MUDANÇA: Usa o total filtrado
                   'Total de Feedbacks: $totalDetailedFeedbacks',
                   style: TextStyle(fontSize: 19, color: Colors.grey[700]),
                   textAlign: TextAlign.left,
                 ),
-                const SizedBox(height: 15), // espaço entre título e lista
-                // Lista de detalhes
-                // MUDANÇA: Passa os dados filtrados
+                const SizedBox(height: 15),
                 _buildDetailedStats(detailedRatings),
 
-                // ✅ ADICIONE o novo gráfico de barras dos últimos 7 dias
-                _buildLast7DaysBarChart(appData, selectedShift),
+                // ✅ ADICIONE os botões e gráficos condicionais:
+                const SizedBox(height: 40),
+                const Divider(),
+                const Text(
+                  'Análise dos Últimos 7 Dias',
+                  style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                _buildViewSelector(),
+                const SizedBox(height: 20),
+
+                // ✅ APENAS UM gráfico será mostrado por vez:
+                if (_selectedView == 'Total')
+                  _buildLast7DaysBarChart(appData, selectedShift),
+                if (_selectedView == 'Média')
+                  _buildAverageBarChart(appData, selectedShift),
+                if (_selectedView ==
+                    'Mais Avaliado') // ✅ MESMO TEXTO QUE O BOTÃO
+                  _buildMostRatedBarChart(appData, selectedShift),
               ],
             ),
           ),
@@ -1225,7 +1368,7 @@ class StatisticsScreen extends StatelessWidget {
     );
   }
 
-  // Seções para o Gráfico de Pizza de Estrelas (MUDANÇA nos parâmetros)
+  // Seções para o Gráfico de Pizza de Estrelas
   List<PieChartSectionData> _buildStarSections(
     AppData appData,
     Map<int, int> starRatings,
@@ -1266,7 +1409,6 @@ class StatisticsScreen extends StatelessWidget {
     'Excelente',
   ];
 
-  // SUBSTITUA O MÉTODO _buildStarLegend INTEIRO
   Widget _buildStarLegend(
     AppData appData,
     Map<int, int> starRatings,
@@ -1283,7 +1425,6 @@ class StatisticsScreen extends StatelessWidget {
           final int count = entry.value;
           final double percentage = total > 0 ? (count / total) * 100 : 0;
 
-          // ✅ NOVIDADE: Pega o rótulo de sentimento (index 0 = 1 estrela)
           final String label = _sentimentLabels[star - 1];
 
           return Padding(
@@ -1297,11 +1438,7 @@ class StatisticsScreen extends StatelessWidget {
                   color: appData.pieColors[star - 1],
                   margin: const EdgeInsets.only(right: 20),
                 ),
-                Text(
-                  // ✅ NOVIDADE: Usa o RÓTULO e mostra a contagem
-                  '$label: ${count}',
-                  style: const TextStyle(fontSize: 20),
-                ),
+                Text('$label: ${count}', style: const TextStyle(fontSize: 20)),
               ],
             ),
           );
@@ -1310,7 +1447,7 @@ class StatisticsScreen extends StatelessWidget {
     );
   }
 
-  // Lista de detalhes de avaliação (Positivo/Negativo) (MUDANÇA nos parâmetros)
+  // Lista de detalhes de avaliação
   Widget _buildDetailedStats(Map<String, int> detailedRatings) {
     if (detailedRatings.isEmpty) {
       return const Center(
@@ -1318,7 +1455,6 @@ class StatisticsScreen extends StatelessWidget {
       );
     }
 
-    // MUDANÇA: Usa detailedRatings diretamente
     final sortedEntries = detailedRatings.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
@@ -1342,7 +1478,7 @@ class StatisticsScreen extends StatelessWidget {
                       ? Colors.green.shade800
                       : Colors.red.shade800,
                   fontWeight: FontWeight.w500,
-                  fontSize: 16.0, // ✅ MUDANÇA: Aumentado para 16.0
+                  fontSize: 16.0,
                 ),
               ),
               Text(
@@ -1350,7 +1486,7 @@ class StatisticsScreen extends StatelessWidget {
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16.0,
-                ), // ✅ MUDANÇA: Aumentado para 16.0
+                ),
               ),
             ],
           ),
@@ -1359,38 +1495,18 @@ class StatisticsScreen extends StatelessWidget {
     );
   }
 
-  // ✅ ADICIONE este método para criar o gráfico de barras dos últimos 7 dias
+  // ✅ GRÁFICO DE TOTAL
   Widget _buildLast7DaysBarChart(AppData appData, int selectedShift) {
     final dailyData = appData.getLast7DaysStarRatings(selectedShift);
-
-    // Ordenar os dias do mais recente para o mais antigo
     final sortedDays = dailyData.keys.toList()..sort((a, b) => a.compareTo(b));
 
-    // Formatar labels dos dias (ontem + 6 dias anteriores)
-    final List<String> dayLabels = sortedDays.map((day) {
-      final now = DateTime.now();
-      final yesterday = DateTime(
-        now.year,
-        now.month,
-        now.day,
-      ).subtract(const Duration(days: 1));
-      final twoDaysAgo = yesterday.subtract(const Duration(days: 1));
-
-      if (day == yesterday) return 'Ontem';
-      if (day == twoDaysAgo) return '2 dias';
-      return '${day.day}/${day.month}';
-    }).toList();
+    final List<String> dayLabels = sortedDays
+        .map((day) => _getDayLabel(day))
+        .toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: 40),
-        const Divider(),
-        const Text(
-          'Avaliações dos Últimos 7 Dias',
-          style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
-          textAlign: TextAlign.left,
-        ),
         const SizedBox(height: 20),
         SizedBox(
           height: 300,
@@ -1398,7 +1514,7 @@ class StatisticsScreen extends StatelessWidget {
             BarChartData(
               alignment: BarChartAlignment.spaceBetween,
               maxY: _getMaxYValue(dailyData),
-              groupsSpace: 12, // ✅ AUMENTE o espaço entre os grupos de dias
+              groupsSpace: 12,
               barTouchData: BarTouchData(
                 enabled: true,
                 touchTooltipData: BarTouchTooltipData(
@@ -1409,9 +1525,10 @@ class StatisticsScreen extends StatelessWidget {
                     final dayIndex = groupIndex;
                     final day = sortedDays[dayIndex];
                     final dayLabel = _getDayLabel(day);
+                    final categoryName = getCategoryName(star);
 
                     return BarTooltipItem(
-                      '$dayLabel\n$star estrelas: $count avaliação${count == 1 ? '' : 's'}',
+                      '$dayLabel\n$categoryName: $count avaliação${count == 1 ? '' : 's'}',
                       const TextStyle(color: Colors.white),
                     );
                   },
@@ -1468,18 +1585,278 @@ class StatisticsScreen extends StatelessWidget {
     );
   }
 
-  // Método auxiliar para calcular o valor máximo do eixo Y
+  // ✅ GRÁFICO DE MÉDIA
+  Widget _buildAverageBarChart(AppData appData, int selectedShift) {
+    final averageData = appData.getLast7DaysAverageRatings(selectedShift);
+    final sortedDays = averageData.keys.toList()
+      ..sort((a, b) => a.compareTo(b));
+
+    final List<String> dayLabels = sortedDays
+        .map((day) => _getDayLabel(day))
+        .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 20),
+        Text(
+          'Média das avaliações por dia',
+          style: TextStyle(fontSize: 16, color: Colors.grey[700]),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 300,
+          child: BarChart(
+            BarChartData(
+              alignment: BarChartAlignment.spaceBetween,
+              maxY: 5.0,
+              groupsSpace: 12,
+              barTouchData: BarTouchData(
+                enabled: true,
+                touchTooltipData: BarTouchTooltipData(
+                  getTooltipColor: (group) => Colors.grey[800]!,
+                  getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                    final dayIndex = groupIndex;
+                    final day = sortedDays[dayIndex];
+                    final average = averageData[day] ?? 0.0;
+                    final categoryName = getCategoryName(average.round());
+
+                    return BarTooltipItem(
+                      '${_getDayLabel(day)}\nMédia: ${average.toStringAsFixed(1)} ($categoryName)',
+                      const TextStyle(color: Colors.white),
+                    );
+                  },
+                ),
+              ),
+              titlesData: FlTitlesData(
+                show: true,
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    getTitlesWidget: (value, meta) {
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Text(
+                          dayLabels[value.toInt()],
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      );
+                    },
+                    reservedSize: 40,
+                  ),
+                ),
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 30,
+                    getTitlesWidget: (value, meta) {
+                      if (value == meta.min ||
+                          value == meta.max ||
+                          value == 2.5) {
+                        return Text(
+                          value.toInt().toString(),
+                          style: const TextStyle(fontSize: 12),
+                        );
+                      }
+                      return const Text('');
+                    },
+                  ),
+                ),
+                topTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                rightTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+              ),
+              borderData: FlBorderData(show: false),
+              gridData: const FlGridData(show: false),
+              barGroups: sortedDays.asMap().entries.map((entry) {
+                final index = entry.key;
+                final day = entry.value;
+                final average = averageData[day] ?? 0.0;
+
+                Color getColorForAverage(double avg) {
+                  if (avg < 2.0) return Colors.red.shade700;
+                  if (avg < 3.0) return Colors.deepOrange;
+                  if (avg < 4.0) return Colors.amber;
+                  if (avg < 4.5) return Colors.lightGreen;
+                  return Colors.green.shade700;
+                }
+
+                return BarChartGroupData(
+                  x: index,
+                  barRods: [
+                    BarChartRodData(
+                      fromY: 0,
+                      toY: average,
+                      color: getColorForAverage(average),
+                      width: 20,
+                    ),
+                  ],
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ✅ GRÁFICO DO MAIS AVALIADO
+  Widget _buildMostRatedBarChart(AppData appData, int selectedShift) {
+    final mostRatedData = appData.getLast7DaysMostRated(selectedShift);
+    final sortedDays = mostRatedData.keys.toList()
+      ..sort((a, b) => a.compareTo(b));
+
+    final List<String> dayLabels = sortedDays
+        .map((day) => _getDayLabel(day))
+        .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 20),
+        Text(
+          'Categoria mais avaliada por dia',
+          style: TextStyle(fontSize: 16, color: Colors.grey[700]),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 300,
+          child: BarChart(
+            BarChartData(
+              alignment: BarChartAlignment.spaceBetween,
+              maxY: _getMaxYValueMostRated(mostRatedData),
+              groupsSpace: 12,
+              barTouchData: BarTouchData(
+                enabled: true,
+                touchTooltipData: BarTouchTooltipData(
+                  getTooltipColor: (group) => Colors.grey[800]!,
+                  getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                    final dayIndex = groupIndex;
+                    final day = sortedDays[dayIndex];
+                    final data = mostRatedData[day]!;
+                    final star = data['star'] as int;
+                    final count = data['count'] as int;
+                    final categoryName = getCategoryName(star);
+
+                    return BarTooltipItem(
+                      '${_getDayLabel(day)}\n$categoryName: $count avaliação${count == 1 ? '' : 's'}',
+                      const TextStyle(color: Colors.white),
+                    );
+                  },
+                ),
+              ),
+              titlesData: FlTitlesData(
+                show: true,
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    getTitlesWidget: (value, meta) {
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Text(
+                          dayLabels[value.toInt()],
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      );
+                    },
+                    reservedSize: 40,
+                  ),
+                ),
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 30,
+                    getTitlesWidget: (value, meta) {
+                      if (value == meta.min ||
+                          value == meta.max ||
+                          value == meta.max / 2) {
+                        return Text(
+                          value.toInt().toString(),
+                          style: const TextStyle(fontSize: 12),
+                        );
+                      }
+                      return const Text('');
+                    },
+                  ),
+                ),
+                topTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                rightTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+              ),
+              borderData: FlBorderData(show: false),
+              gridData: const FlGridData(show: false),
+              barGroups: sortedDays.asMap().entries.map((entry) {
+                final index = entry.key;
+                final day = entry.value;
+                final data = mostRatedData[day]!;
+                final star = data['star'] as int;
+                final count = data['count'] as int;
+
+                Color getColorForStar(int star) {
+                  switch (star) {
+                    case 1:
+                      return Colors.red.shade700;
+                    case 2:
+                      return Colors.deepOrange;
+                    case 3:
+                      return Colors.amber;
+                    case 4:
+                      return Colors.lightGreen;
+                    case 5:
+                      return Colors.green.shade700;
+                    default:
+                      return Colors.grey;
+                  }
+                }
+
+                return BarChartGroupData(
+                  x: index,
+                  barRods: [
+                    BarChartRodData(
+                      fromY: 0,
+                      toY: count.toDouble(),
+                      color: getColorForStar(star),
+                      width: 20,
+                    ),
+                  ],
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Métodos auxiliares
   double _getMaxYValue(Map<DateTime, Map<int, int>> dailyData) {
     double max = 0;
     for (var dayData in dailyData.values) {
       final dayMax = dayData.values.reduce((a, b) => a > b ? a : b);
       if (dayMax > max) max = dayMax.toDouble();
     }
-    return max + 2; // Adiciona um pouco de espaço no topo
+    return max + 2;
   }
 
-  // Método para construir os grupos de barras
-  // ✅ CORREÇÃO: Barras lado a lado com posicionamento horizontal
+  double _getMaxYValueMostRated(
+    Map<DateTime, Map<String, dynamic>> mostRatedData,
+  ) {
+    double max = 0;
+    for (var data in mostRatedData.values) {
+      final count = data['count'] as int;
+      if (count > max) max = count.toDouble();
+    }
+    return max + 1;
+  }
+
   List<BarChartGroupData> _buildBarGroups(
     Map<DateTime, Map<int, int>> dailyData,
     List<DateTime> sortedDays,
@@ -1489,41 +1866,35 @@ class StatisticsScreen extends StatelessWidget {
       final day = entry.value;
       final dayData = dailyData[day]!;
 
-      // ✅ Calcula as posições horizontais para cada barra (lado a lado)
       return BarChartGroupData(
         x: index,
         groupVertically: false,
-        barsSpace: 4, // Espaço entre as barras do mesmo grupo
+        barsSpace: 4,
         barRods: [
-          // Barra 1 estrela (primeira da esquerda)
           BarChartRodData(
             fromY: 0,
             toY: dayData[1]?.toDouble() ?? 0,
             color: Colors.red.shade700,
             width: 10,
           ),
-          // Barra 2 estrelas
           BarChartRodData(
             fromY: 0,
             toY: dayData[2]?.toDouble() ?? 0,
             color: Colors.deepOrange,
             width: 10,
           ),
-          // Barra 3 estrelas
           BarChartRodData(
             fromY: 0,
             toY: dayData[3]?.toDouble() ?? 0,
             color: Colors.amber,
             width: 10,
           ),
-          // Barra 4 estrelas
           BarChartRodData(
             fromY: 0,
             toY: dayData[4]?.toDouble() ?? 0,
             color: Colors.lightGreen,
             width: 10,
           ),
-          // Barra 5 estrelas (última da direita)
           BarChartRodData(
             fromY: 0,
             toY: dayData[5]?.toDouble() ?? 0,
@@ -1535,16 +1906,25 @@ class StatisticsScreen extends StatelessWidget {
     }).toList();
   }
 
-  // Método para construir a legenda do gráfico de barras
   Widget _buildBarChartLegend() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Column(
       children: [
-        _buildLegendItem(Colors.red.shade700, '1'),
-        _buildLegendItem(Colors.deepOrange, '2'),
-        _buildLegendItem(Colors.amber, '3'),
-        _buildLegendItem(Colors.lightGreen, '4'),
-        _buildLegendItem(Colors.green.shade700, '5'),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildLegendItem(Colors.red.shade700, 'Péssimo'),
+            _buildLegendItem(Colors.deepOrange, 'Ruim'),
+            _buildLegendItem(Colors.amber, 'Neutro'),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildLegendItem(Colors.lightGreen, 'Bom'),
+            _buildLegendItem(Colors.green.shade700, 'Excelente'),
+          ],
+        ),
       ],
     );
   }
@@ -1561,17 +1941,20 @@ class StatisticsScreen extends StatelessWidget {
       ),
     );
   }
-}
 
-String _getDayLabel(DateTime day) {
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
-  final yesterday = today.subtract(const Duration(days: 1));
-  final twoDaysAgo = yesterday.subtract(const Duration(days: 1));
+  String _getDayLabel(DateTime day) {
+    final now = DateTime.now();
+    final yesterday = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(const Duration(days: 1));
+    final twoDaysAgo = yesterday.subtract(const Duration(days: 1));
 
-  if (day == yesterday) return 'Ontem';
-  if (day == twoDaysAgo) return '2 dias atrás';
-  return '${day.day}/${day.month}';
+    if (day == yesterday) return 'Ontem';
+    if (day == twoDaysAgo) return '2 dias atrás';
+    return '${day.day}/${day.month}';
+  }
 }
 
 // Mantenha esta cor institucional definida no topo do seu main.dart
@@ -1585,8 +1968,8 @@ class RatingSelectionScreen extends StatefulWidget {
 
   const RatingSelectionScreen({
     super.key,
-    required this.onRatingSelected, // ✅ ADICIONE
-    this.selectedRating, // ✅ ADICIONE
+    required this.onRatingSelected,
+    this.selectedRating,
     required this.currentShift,
   });
 
@@ -1595,199 +1978,203 @@ class RatingSelectionScreen extends StatefulWidget {
 }
 
 class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
-  int _selectedStars = 0; // Estado para armazenar a seleção
+  int _selectedStars = 0;
 
-  // Mapeamento dos emojis
   final List<String> _ratingEmojis = const ['😠', '😟', '😐', '🙂', '😍'];
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedStars = widget.selectedRating ?? 0;
+  }
 
   void _handleEmojiClick(int star) {
     setState(() {
       _selectedStars = star;
     });
 
-    // Determina a aba inicial baseada na avaliação
-    final int initialTab = (star >= 4) ? 0 : 1;
-    int targetTab;
-    if (star >= 4) {
-      targetTab = 0; // Aba "Feedback Positivo"
-    } else {
-      targetTab = 1; // Aba "Feedback Negativo"
-    }
-    // ✅ ADICIONE um pequeno delay para ver a animação:
     Future.delayed(const Duration(milliseconds: 300), () {
-      // Determina a aba inicial baseada na avaliação
       final int initialTab = (star >= 4) ? 0 : 1;
-
-      // Navega automaticamente para a tela de feedbacks
       widget.onRatingSelected(star, initialTab);
     });
   }
 
-  // Função para navegar para a tela de detalhes após a seleção (será chamada no build)
-  void _navigateToDetails(int starValue) {
-    // 1. Determina a aba de detalhes correta
-    final int initialTab = (starValue >= 4) ? 0 : 1;
-
-    widget.onRatingSelected(_selectedStars, initialTab);
-  }
-
   @override
   Widget build(BuildContext context) {
-    // ⚠️ ATENÇÃO: Esta estrutura deve ser adaptada para ser a TELA DE AVALIAÇÃO DO ÍNDICE 0.
-
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // Lista vertical dos Emojis
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text(
-                'Qual sua experiência geral?',
-                style: TextStyle(fontSize: 44, fontWeight: FontWeight.bold),
-              ),
-              // ✅ ADICIONE a data atual:
-              Consumer<AppData>(
-                builder: (context, appData, child) {
-                  final now = DateTime.now();
-                  final todayFormatted = '${now.day}/${now.month}/${now.year}';
-                  return Text(
-                    'Hoje: $todayFormatted',
-                    style: TextStyle(fontSize: 20, color: Colors.grey[600]),
-                  );
-                },
-              ),
-              const SizedBox(height: 40),
-              ...List.generate(5, (index) {
-                final int starValue = index + 1;
-                final String currentEmoji = _ratingEmojis[index];
-                final bool isSelected = starValue == _selectedStars;
-
-                final List<String> legendas = [
-                  'Péssimo',
-                  'Ruim',
-                  'Neutro',
-                  'Bom',
-                  'Excelente',
-                ];
-                final String legendaAtual = legendas[index];
-
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: Container(
+    return Stack(
+      children: [
+        // ✅ IMAGEM DE FUNDO
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Opacity(
+              opacity: 0.25,
+              child: ColorFiltered(
+                colorFilter: const ColorFilter.mode(
+                  Colors.white,
+                  BlendMode.modulate,
+                ),
+                child: Align(
+                  alignment: Alignment.center,
+                  child: SizedBox(
                     width: 500,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        // Container para o emoji
-                        Container(
-                          width: 100,
-                          alignment: Alignment.centerRight,
-                          child: IconButton(
-                            onPressed: () => _handleEmojiClick(starValue),
-                            padding: const EdgeInsets.all(8.0),
-                            style: ButtonStyle(
-                              side: WidgetStateProperty.all(BorderSide.none),
-                              backgroundColor:
-                                  WidgetStateProperty.resolveWith<Color?>((
-                                    Set<WidgetState> states,
-                                  ) {
-                                    return isSelected
-                                        ? Colors.amber.withOpacity(0.3)
-                                        : Colors.transparent;
-                                  }),
-                              shape: WidgetStateProperty.all<OutlinedBorder>(
-                                const CircleBorder(),
-                              ),
-                              overlayColor: WidgetStateProperty.all(
-                                Colors.transparent,
-                              ),
-                              elevation:
-                                  WidgetStateProperty.resolveWith<double?>((
-                                    Set<WidgetState> states,
-                                  ) {
-                                    return isSelected ? 8.0 : 0.0;
-                                  }),
-                              shadowColor: WidgetStateProperty.all(
-                                Colors.black.withOpacity(0.3),
-                              ),
-                            ),
-                            icon: TweenAnimationBuilder<double>(
-                              tween: Tween<double>(
-                                begin: 1.0,
-                                end: isSelected ? 1.2 : 1.0,
-                              ),
-                              duration: const Duration(milliseconds: 200),
-                              builder:
-                                  (
-                                    BuildContext context,
-                                    double scale,
-                                    Widget? child,
-                                  ) {
-                                    return Transform.scale(
-                                      scale: scale,
-                                      child: Text(
-                                        currentEmoji,
-                                        style: const TextStyle(fontSize: 110),
-                                      ),
-                                    );
-                                  },
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 70),
-                        // Container para a legenda E contador
-                        Container(
-                          width: 200,
-                          alignment: Alignment.centerLeft,
-                          child: Consumer<AppData>(
-                            builder: (context, appData, child) {
-                              // ✅ SUBSTITUA pelo método do dia atual:
-                              final starRatings = appData.getTodayStarRatings(
-                                widget.currentShift,
-                              );
-                              final int count = starRatings[starValue] ?? 0;
-
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    legendaAtual,
-                                    style: TextStyle(
-                                      fontSize: 40,
-                                      fontWeight: FontWeight.w500,
-                                      color: isSelected
-                                          ? Colors.black
-                                          : Colors.grey[700],
-                                    ),
-                                  ),
-                                  Text(
-                                    count == 1
-                                        ? '(${count} avaliação hoje)' // ✅ ADICIONE "hoje"
-                                        : '(${count} avaliações hoje)',
-                                    style: TextStyle(
-                                      fontSize: 20,
-                                      color: Colors.grey[600],
-                                      fontStyle: FontStyle.italic,
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
-                          ),
-                        ),
-                      ],
+                    height: 500,
+                    child: Image.asset(
+                      'assets/images/costa_feedbacks_logo.png',
                     ),
                   ),
-                );
-              }),
-            ],
+                ),
+              ),
+            ),
           ),
-        ],
-      ),
+        ),
+        // ✅ CONTEÚDO PRINCIPAL
+        Positioned.fill(
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text(
+                  'Qual sua experiência geral?',
+                  style: TextStyle(fontSize: 44, fontWeight: FontWeight.bold),
+                ),
+                Consumer<AppData>(
+                  builder: (context, appData, child) {
+                    final now = DateTime.now();
+                    final todayFormatted =
+                        '${now.day}/${now.month}/${now.year}';
+                    return Text(
+                      'Hoje: $todayFormatted',
+                      style: TextStyle(fontSize: 20, color: Colors.grey[600]),
+                    );
+                  },
+                ),
+                const SizedBox(height: 40),
+                ...List.generate(5, (index) {
+                  final int starValue = index + 1;
+                  final String currentEmoji = _ratingEmojis[index];
+                  final bool isSelected = starValue == _selectedStars;
+
+                  final List<String> legendas = [
+                    'Péssimo',
+                    'Ruim',
+                    'Neutro',
+                    'Bom',
+                    'Excelente',
+                  ];
+                  final String legendaAtual = legendas[index];
+
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Container(
+                      width: 500,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 100,
+                            alignment: Alignment.centerRight,
+                            child: IconButton(
+                              onPressed: () => _handleEmojiClick(starValue),
+                              padding: const EdgeInsets.all(8.0),
+                              style: ButtonStyle(
+                                side: WidgetStateProperty.all(BorderSide.none),
+                                backgroundColor:
+                                    WidgetStateProperty.resolveWith<Color?>((
+                                      Set<WidgetState> states,
+                                    ) {
+                                      return isSelected
+                                          ? Colors.amber.withOpacity(0.3)
+                                          : Colors.transparent;
+                                    }),
+                                shape: WidgetStateProperty.all<OutlinedBorder>(
+                                  const CircleBorder(),
+                                ),
+                                overlayColor: WidgetStateProperty.all(
+                                  Colors.transparent,
+                                ),
+                                elevation:
+                                    WidgetStateProperty.resolveWith<double?>((
+                                      Set<WidgetState> states,
+                                    ) {
+                                      return isSelected ? 8.0 : 0.0;
+                                    }),
+                                shadowColor: WidgetStateProperty.all(
+                                  Colors.black.withOpacity(0.3),
+                                ),
+                              ),
+                              icon: TweenAnimationBuilder<double>(
+                                tween: Tween<double>(
+                                  begin: 1.0,
+                                  end: isSelected ? 1.2 : 1.0,
+                                ),
+                                duration: const Duration(milliseconds: 200),
+                                builder:
+                                    (
+                                      BuildContext context,
+                                      double scale,
+                                      Widget? child,
+                                    ) {
+                                      return Transform.scale(
+                                        scale: scale,
+                                        child: Text(
+                                          currentEmoji,
+                                          style: const TextStyle(fontSize: 110),
+                                        ),
+                                      );
+                                    },
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 70),
+                          Container(
+                            width: 200,
+                            alignment: Alignment.centerLeft,
+                            child: Consumer<AppData>(
+                              builder: (context, appData, child) {
+                                final starRatings = appData.getTodayStarRatings(
+                                  widget.currentShift,
+                                );
+                                final int count = starRatings[starValue] ?? 0;
+
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      legendaAtual,
+                                      style: TextStyle(
+                                        fontSize: 40,
+                                        fontWeight: FontWeight.w500,
+                                        color: isSelected
+                                            ? Colors.black
+                                            : Colors.grey[700],
+                                      ),
+                                    ),
+                                    Text(
+                                      count == 1
+                                          ? '(${count} avaliação hoje)'
+                                          : '(${count} avaliações hoje)',
+                                      style: TextStyle(
+                                        fontSize: 20,
+                                        color: Colors.grey[600],
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
