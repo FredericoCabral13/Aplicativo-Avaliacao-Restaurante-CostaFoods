@@ -276,6 +276,73 @@ class AppData extends ChangeNotifier {
     final todayRecords = getTodayEvaluationRecords(shift);
     return todayRecords.length;
   }
+
+  // ===============================================================
+  // MÉTODOS PARA ÚLTIMOS 7 DIAS
+  // ===============================================================
+
+  // Método para obter avaliações dos últimos 7 dias (ontem + 6 dias anteriores)
+  List<Map<String, dynamic>> getLast7DaysEvaluationRecords(int shift) {
+    final now = DateTime.now();
+    final yesterday = now.subtract(const Duration(days: 1));
+    final sevenDaysAgo = yesterday.subtract(
+      const Duration(days: 6),
+    ); // ontem - 6 dias = 7 dias no total
+
+    return allEvaluationRecords.where((record) {
+      final recordDate = DateTime.parse(record['timestamp']);
+      final recordDay = DateTime(
+        recordDate.year,
+        recordDate.month,
+        recordDate.day,
+      );
+
+      // ✅ MUDE: Inclui de sevenDaysAgo até yesterday (exclui hoje)
+      return (recordDay.isAfter(
+                sevenDaysAgo.subtract(const Duration(days: 1)),
+              ) &&
+              recordDay.isBefore(yesterday.add(const Duration(days: 1)))) &&
+          record['turno'] == shift;
+    }).toList();
+  }
+
+  // Método para obter contagem de estrelas por dia dos últimos 7 dias
+  Map<DateTime, Map<int, int>> getLast7DaysStarRatings(int shift) {
+    final last7DaysRecords = getLast7DaysEvaluationRecords(shift);
+    final Map<DateTime, Map<int, int>> dailyCounts = {};
+
+    for (var record in last7DaysRecords) {
+      final recordDate = DateTime.parse(record['timestamp']);
+      final recordDay = DateTime(
+        recordDate.year,
+        recordDate.month,
+        recordDate.day,
+      );
+      final star = record['estrelas'] as int;
+
+      if (!dailyCounts.containsKey(recordDay)) {
+        dailyCounts[recordDay] = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+      }
+
+      dailyCounts[recordDay]![star] = (dailyCounts[recordDay]![star] ?? 0) + 1;
+    }
+
+    // ✅ CORREÇÃO: Preencher dias faltantes de ONTEM até 7 dias atrás
+    final now = DateTime.now();
+    final yesterday = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(const Duration(days: 1));
+    for (int i = 0; i < 7; i++) {
+      final day = yesterday.subtract(Duration(days: i));
+      if (!dailyCounts.containsKey(day)) {
+        dailyCounts[day] = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+      }
+    }
+
+    return dailyCounts;
+  }
 }
 
 // ===================================================================
@@ -1147,6 +1214,9 @@ class StatisticsScreen extends StatelessWidget {
                 // Lista de detalhes
                 // MUDANÇA: Passa os dados filtrados
                 _buildDetailedStats(detailedRatings),
+
+                // ✅ ADICIONE o novo gráfico de barras dos últimos 7 dias
+                _buildLast7DaysBarChart(appData, selectedShift),
               ],
             ),
           ),
@@ -1288,6 +1358,220 @@ class StatisticsScreen extends StatelessWidget {
       },
     );
   }
+
+  // ✅ ADICIONE este método para criar o gráfico de barras dos últimos 7 dias
+  Widget _buildLast7DaysBarChart(AppData appData, int selectedShift) {
+    final dailyData = appData.getLast7DaysStarRatings(selectedShift);
+
+    // Ordenar os dias do mais recente para o mais antigo
+    final sortedDays = dailyData.keys.toList()..sort((a, b) => a.compareTo(b));
+
+    // Formatar labels dos dias (ontem + 6 dias anteriores)
+    final List<String> dayLabels = sortedDays.map((day) {
+      final now = DateTime.now();
+      final yesterday = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(const Duration(days: 1));
+      final twoDaysAgo = yesterday.subtract(const Duration(days: 1));
+
+      if (day == yesterday) return 'Ontem';
+      if (day == twoDaysAgo) return '2 dias';
+      return '${day.day}/${day.month}';
+    }).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 40),
+        const Divider(),
+        const Text(
+          'Avaliações dos Últimos 7 Dias',
+          style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
+          textAlign: TextAlign.left,
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          height: 300,
+          child: BarChart(
+            BarChartData(
+              alignment: BarChartAlignment.spaceBetween,
+              maxY: _getMaxYValue(dailyData),
+              groupsSpace: 12, // ✅ AUMENTE o espaço entre os grupos de dias
+              barTouchData: BarTouchData(
+                enabled: true,
+                touchTooltipData: BarTouchTooltipData(
+                  getTooltipColor: (group) => Colors.grey[800]!,
+                  getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                    final star = rodIndex + 1;
+                    final count = rod.toY.toInt();
+                    final dayIndex = groupIndex;
+                    final day = sortedDays[dayIndex];
+                    final dayLabel = _getDayLabel(day);
+
+                    return BarTooltipItem(
+                      '$dayLabel\n$star estrelas: $count avaliação${count == 1 ? '' : 's'}',
+                      const TextStyle(color: Colors.white),
+                    );
+                  },
+                ),
+              ),
+              titlesData: FlTitlesData(
+                show: true,
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    getTitlesWidget: (value, meta) {
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Text(
+                          dayLabels[value.toInt()],
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      );
+                    },
+                    reservedSize: 40,
+                  ),
+                ),
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 40,
+                    getTitlesWidget: (value, meta) {
+                      if (value == meta.min || value == meta.max) {
+                        return Text(
+                          value.toInt().toString(),
+                          style: const TextStyle(fontSize: 12),
+                        );
+                      }
+                      return const Text('');
+                    },
+                  ),
+                ),
+                topTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                rightTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+              ),
+              borderData: FlBorderData(show: false),
+              gridData: const FlGridData(show: false),
+              barGroups: _buildBarGroups(dailyData, sortedDays),
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        _buildBarChartLegend(),
+      ],
+    );
+  }
+
+  // Método auxiliar para calcular o valor máximo do eixo Y
+  double _getMaxYValue(Map<DateTime, Map<int, int>> dailyData) {
+    double max = 0;
+    for (var dayData in dailyData.values) {
+      final dayMax = dayData.values.reduce((a, b) => a > b ? a : b);
+      if (dayMax > max) max = dayMax.toDouble();
+    }
+    return max + 2; // Adiciona um pouco de espaço no topo
+  }
+
+  // Método para construir os grupos de barras
+  // ✅ CORREÇÃO: Barras lado a lado com posicionamento horizontal
+  List<BarChartGroupData> _buildBarGroups(
+    Map<DateTime, Map<int, int>> dailyData,
+    List<DateTime> sortedDays,
+  ) {
+    return sortedDays.asMap().entries.map((entry) {
+      final index = entry.key;
+      final day = entry.value;
+      final dayData = dailyData[day]!;
+
+      // ✅ Calcula as posições horizontais para cada barra (lado a lado)
+      return BarChartGroupData(
+        x: index,
+        groupVertically: false,
+        barsSpace: 4, // Espaço entre as barras do mesmo grupo
+        barRods: [
+          // Barra 1 estrela (primeira da esquerda)
+          BarChartRodData(
+            fromY: 0,
+            toY: dayData[1]?.toDouble() ?? 0,
+            color: Colors.red.shade700,
+            width: 10,
+          ),
+          // Barra 2 estrelas
+          BarChartRodData(
+            fromY: 0,
+            toY: dayData[2]?.toDouble() ?? 0,
+            color: Colors.deepOrange,
+            width: 10,
+          ),
+          // Barra 3 estrelas
+          BarChartRodData(
+            fromY: 0,
+            toY: dayData[3]?.toDouble() ?? 0,
+            color: Colors.amber,
+            width: 10,
+          ),
+          // Barra 4 estrelas
+          BarChartRodData(
+            fromY: 0,
+            toY: dayData[4]?.toDouble() ?? 0,
+            color: Colors.lightGreen,
+            width: 10,
+          ),
+          // Barra 5 estrelas (última da direita)
+          BarChartRodData(
+            fromY: 0,
+            toY: dayData[5]?.toDouble() ?? 0,
+            color: Colors.green.shade700,
+            width: 10,
+          ),
+        ],
+      );
+    }).toList();
+  }
+
+  // Método para construir a legenda do gráfico de barras
+  Widget _buildBarChartLegend() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildLegendItem(Colors.red.shade700, '1'),
+        _buildLegendItem(Colors.deepOrange, '2'),
+        _buildLegendItem(Colors.amber, '3'),
+        _buildLegendItem(Colors.lightGreen, '4'),
+        _buildLegendItem(Colors.green.shade700, '5'),
+      ],
+    );
+  }
+
+  Widget _buildLegendItem(Color color, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+      child: Row(
+        children: [
+          Container(width: 12, height: 12, color: color),
+          const SizedBox(width: 4),
+          Text(text, style: const TextStyle(fontSize: 12)),
+        ],
+      ),
+    );
+  }
+}
+
+String _getDayLabel(DateTime day) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final yesterday = today.subtract(const Duration(days: 1));
+  final twoDaysAgo = yesterday.subtract(const Duration(days: 1));
+
+  if (day == yesterday) return 'Ontem';
+  if (day == twoDaysAgo) return '2 dias atrás';
+  return '${day.day}/${day.month}';
 }
 
 // Mantenha esta cor institucional definida no topo do seu main.dart
