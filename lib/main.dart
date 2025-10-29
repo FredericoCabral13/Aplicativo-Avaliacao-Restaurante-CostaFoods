@@ -213,6 +213,69 @@ class AppData extends ChangeNotifier {
       shiftDetailedRatings[shift] ?? {};
   int getTotalStarRatings(int shift) =>
       getStarRatings(shift).values.fold(0, (sum, count) => sum + count);
+
+  // ===============================================================
+  // MÉTODOS PARA FILTRAR POR DIA ATUAL
+  // ===============================================================
+
+  // Método para obter apenas as avaliações do dia atual
+  List<Map<String, dynamic>> getTodayEvaluationRecords(int shift) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    return allEvaluationRecords.where((record) {
+      final recordDate = DateTime.parse(record['timestamp']);
+      final recordDay = DateTime(
+        recordDate.year,
+        recordDate.month,
+        recordDate.day,
+      );
+      return recordDay == today && record['turno'] == shift;
+    }).toList();
+  }
+
+  // Método para calcular contagens apenas do dia atual
+  Map<int, int> getTodayStarRatings(int shift) {
+    final todayRecords = getTodayEvaluationRecords(shift);
+    final Map<int, int> todayCounts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+
+    for (var record in todayRecords) {
+      final star = record['estrelas'] as int;
+      todayCounts[star] = (todayCounts[star] ?? 0) + 1;
+    }
+
+    return todayCounts;
+  }
+
+  // Método para calcular feedbacks detalhados apenas do dia atual
+  Map<String, int> getTodayDetailedRatings(int shift) {
+    final todayRecords = getTodayEvaluationRecords(shift);
+    final Map<String, int> todayDetailed = {};
+
+    for (var record in todayRecords) {
+      final positives = (record['positivos'] as String)
+          .split('; ')
+          .where((s) => s.isNotEmpty);
+      final negatives = (record['negativos'] as String)
+          .split('; ')
+          .where((s) => s.isNotEmpty);
+
+      for (var phrase in positives) {
+        todayDetailed[phrase] = (todayDetailed[phrase] ?? 0) + 1;
+      }
+      for (var phrase in negatives) {
+        todayDetailed[phrase] = (todayDetailed[phrase] ?? 0) + 1;
+      }
+    }
+
+    return todayDetailed;
+  }
+
+  // Método para obter total de avaliações do dia atual
+  int getTodayTotalStarRatings(int shift) {
+    final todayRecords = getTodayEvaluationRecords(shift);
+    return todayRecords.length;
+  }
 }
 
 // ===================================================================
@@ -960,15 +1023,19 @@ class StatisticsScreen extends StatelessWidget {
     final int selectedShift = currentShift; // Obtém o turno atual
     return Consumer<AppData>(
       builder: (context, appData, child) {
-        // MUDANÇA: Obtém APENAS os dados do turno selecionado
-        final starRatings = appData.getStarRatings(selectedShift);
-        final detailedRatings = appData.getDetailedRatings(selectedShift);
-        final totalRatings = appData.getTotalStarRatings(selectedShift);
+        // ✅ SUBSTITUA pelos métodos do dia atual:
+        final starRatings = appData.getTodayStarRatings(selectedShift);
+        final detailedRatings = appData.getTodayDetailedRatings(selectedShift);
+        final totalRatings = appData.getTodayTotalStarRatings(selectedShift);
 
         final int totalDetailedFeedbacks = detailedRatings.values.fold(
           0,
           (sum, count) => sum + count,
         );
+
+        // ✅ ADICIONE um indicador de que são dados do dia:
+        final now = DateTime.now();
+        final todayFormatted = '${now.day}/${now.month}/${now.year}';
         return Align(
           alignment: Alignment.topLeft,
           child: SingleChildScrollView(
@@ -979,16 +1046,17 @@ class StatisticsScreen extends StatelessWidget {
               children: [
                 // 1. TÍTULO CENTRALIZADO
                 const Text(
-                  'Distribuição de Reações (Geral)',
+                  'Distribuição de Reações (Hoje)',
                   style: TextStyle(fontSize: 35, fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
+                // ✅ ADICIONE a data atual:
                 Text(
-                  // MUDANÇA: Usa o total filtrado
-                  'Total de Avaliações: $totalRatings',
-                  style: TextStyle(fontSize: 22, color: Colors.grey[700]),
+                  'Data: $todayFormatted - Total de Avaliações: $totalRatings',
+                  style: TextStyle(fontSize: 18, color: Colors.grey[700]),
                   textAlign: TextAlign.center,
                 ),
+
                 const SizedBox(height: 32),
                 // 2. GRÁFICO + LEGENDA (responsivo)
                 LayoutBuilder(
@@ -1296,6 +1364,17 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                 'Qual sua experiência geral?',
                 style: TextStyle(fontSize: 44, fontWeight: FontWeight.bold),
               ),
+              // ✅ ADICIONE a data atual:
+              Consumer<AppData>(
+                builder: (context, appData, child) {
+                  final now = DateTime.now();
+                  final todayFormatted = '${now.day}/${now.month}/${now.year}';
+                  return Text(
+                    'Hoje: $todayFormatted',
+                    style: TextStyle(fontSize: 20, color: Colors.grey[600]),
+                  );
+                },
+              ),
               const SizedBox(height: 40),
               ...List.generate(5, (index) {
                 final int starValue = index + 1;
@@ -1382,8 +1461,8 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                           alignment: Alignment.centerLeft,
                           child: Consumer<AppData>(
                             builder: (context, appData, child) {
-                              // ✅ Obtém o número de avaliações para este emoji/estrela
-                              final starRatings = appData.getStarRatings(
+                              // ✅ SUBSTITUA pelo método do dia atual:
+                              final starRatings = appData.getTodayStarRatings(
                                 widget.currentShift,
                               );
                               final int count = starRatings[starValue] ?? 0;
@@ -1401,13 +1480,12 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                                           : Colors.grey[700],
                                     ),
                                   ),
-                                  // ✅ ADICIONE o contador de avaliações
                                   Text(
                                     count == 1
-                                        ? '(${count} avaliação)' // ✅ SINGULAR quando for 1
-                                        : '(${count} avaliações)', // ✅ PLURAL quando for 0 ou mais de 1
+                                        ? '(${count} avaliação hoje)' // ✅ ADICIONE "hoje"
+                                        : '(${count} avaliações hoje)',
                                     style: TextStyle(
-                                      fontSize: 25,
+                                      fontSize: 20,
                                       color: Colors.grey[600],
                                       fontStyle: FontStyle.italic,
                                     ),
