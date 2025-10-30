@@ -8,6 +8,8 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:csv/csv.dart';
 
+import 'splash_screen.dart';
+
 // Definido uma ÚNICA vez no topo do arquivo (Correção do Erro de Duplicação)
 typedef PhraseSelectedCallback = void Function(String phrase);
 
