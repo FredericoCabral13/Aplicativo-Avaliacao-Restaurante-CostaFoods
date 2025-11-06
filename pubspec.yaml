@@ -18,6 +18,8 @@ dependencies:
   permission_handler: ^12.0.1
   flutter_launcher_icons: ^0.14.4
   flutter_native_splash: ^2.4.7
+  share_plus: ^7.2.1  # ✅ NOVA - Para compartilhar arquivos
+  #file_picker: ^7.0.1  # ✅ NOVA - Para escolher diretório
 
 dev_dependencies:
   flutter_test:

@@ -10,6 +10,8 @@ import 'package:csv/csv.dart';
 
 import 'splash_screen.dart';
 
+import 'package:share_plus/share_plus.dart';
+
 // Definido uma ÚNICA vez no topo do arquivo (Correção do Erro de Duplicação)
 typedef PhraseSelectedCallback = void Function(String phrase);
 
@@ -413,6 +415,161 @@ class AppData extends ChangeNotifier {
         return '$stars estrelas';
     }
   }
+
+  // ✅ MÉTODO PARA EXPORTAR CSV
+  Future<void> exportCSV(BuildContext context) async {
+    try {
+      final csvData = await _generateCSVContent();
+
+      // Salvar em arquivo temporário
+      final directory = await getTemporaryDirectory();
+      final file = File('${directory.path}/avaliacoes_costa_foods.csv');
+      await file.writeAsString(csvData, flush: true);
+
+      // Compartilhar diretamente
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text:
+            'Avaliações Costa Foods - ${DateTime.now().toString().split(' ')[0]}',
+        subject: 'Exportação de Avaliações',
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao exportar: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // ✅ GERAR CONTEÚDO CSV
+  Future<String> _generateCSVContent() async {
+    final List<List<dynamic>> csvData = [];
+
+    // Cabeçalho
+    csvData.add([
+      'Data/Hora',
+      'Turno',
+      'Avaliação',
+      'Categoria',
+      'Feedbacks Positivos',
+      'Feedbacks Negativos',
+      'Comentário',
+    ]);
+
+    // Dados
+    for (var record in allEvaluationRecords) {
+      final category = getCategoryName(record['estrelas'] as int);
+      final turno = record['turno'] == 1 ? 'Manhã/Tarde' : 'Noite/Madrugada';
+
+      csvData.add([
+        record['timestamp'],
+        turno,
+        '${record['estrelas']} estrelas ($category)',
+        category,
+        record['positivos'],
+        record['negativos'],
+        record['comentario'] ?? '',
+      ]);
+    }
+
+    return const ListToCsvConverter().convert(csvData);
+  }
+
+  // ✅ DIALOG DE SUCESSO COM OPÇÕES
+  Future<void> _showExportSuccessDialog(
+    BuildContext context,
+    String filePath,
+  ) async {
+    final result = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Exportação Concluída!'),
+        content: const Text(
+          'O arquivo CSV foi salvo com sucesso. O que deseja fazer?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(1),
+            child: const Text('Abrir Arquivo'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(2),
+            child: const Text('Compartilhar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(3),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+
+    switch (result) {
+      case 1: // Abrir Arquivo
+        await Share.shareXFiles([XFile(filePath)]);
+        break;
+      case 2: // Compartilhar
+        await Share.shareXFiles([
+          XFile(filePath),
+        ], text: 'Exportação de Avaliações - Costa Foods');
+        break;
+      // case 3: OK - não faz nada
+    }
+  }
+
+  // ✅ MÉTODO ALTERNATivo - Salvar Diretamente na Pasta Downloads
+  Future<void> exportToDownloads(BuildContext context) async {
+    try {
+      final csvData = await _generateCSVContent();
+
+      // Tentar encontrar a pasta Downloads
+      String downloadsPath = await _getDownloadsPath();
+
+      final file = File('$downloadsPath/avaliacoes_costa_foods.csv');
+      await file.writeAsString(csvData, flush: true);
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Arquivo salvo em: $downloadsPath'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      // Fallback: usar o método com escolha de diretório
+      if (context.mounted) {
+        await exportCSV(context);
+      }
+    }
+  }
+
+  // ✅ OBTER CAMINHO DA PASTA DOWNLOADS
+  Future<String> _getDownloadsPath() async {
+    try {
+      // Para Android
+      final directory = await getExternalStorageDirectory();
+      if (directory != null) {
+        // Tenta encontrar a pasta Downloads
+        final downloadsDir = Directory('${directory.path}/Download');
+        if (await downloadsDir.exists()) {
+          return downloadsDir.path;
+        }
+        return directory.path;
+      }
+    } catch (e) {
+      print('Erro ao acessar Downloads: $e');
+    }
+
+    // Fallback: diretório temporário
+    final tempDir = await getTemporaryDirectory();
+    return tempDir.path;
+  }
 }
 
 // ===================================================================
@@ -554,7 +711,10 @@ class _AppTabsControllerState extends State<AppTabsController> {
         actions: _selectedIndex == 1
             ? [
                 IconButton(
-                  icon: const Icon(Icons.emoji_emotions, color: Colors.white),
+                  icon: const Icon(
+                    Icons.access_time_filled,
+                    color: Colors.white,
+                  ),
                   onPressed: () {
                     setState(() {
                       _selectedIndex = 0;
@@ -1238,136 +1398,254 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
         final now = DateTime.now();
         final todayFormatted = '${now.day}/${now.month}/${now.year}';
-        return Align(
-          alignment: Alignment.topLeft,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(56.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisAlignment: MainAxisAlignment.start,
-              children: [
-                // 1. TÍTULO CENTRALIZADO
-                const Text(
-                  'Distribuição de Reações (Hoje)',
-                  style: TextStyle(fontSize: 35, fontWeight: FontWeight.bold),
-                  textAlign: TextAlign.center,
-                ),
-                Text(
-                  'Data: $todayFormatted - Total de Avaliações: $totalRatings',
-                  style: TextStyle(fontSize: 18, color: Colors.grey[700]),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 32),
 
-                // 2. GRÁFICO + LEGENDA (responsivo)
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final isWide = constraints.maxWidth > 500;
-
-                    final pieChartWidget = totalRatings == 0
-                        ? const Center(
-                            child: Text(
-                              'Nenhuma avaliação de estrela ainda.',
-                              textAlign: TextAlign.center,
-                            ),
-                          )
-                        : PieChart(
-                            PieChartData(
-                              sections: _buildStarSections(
-                                appData,
-                                starRatings,
-                                totalRatings,
-                                isWide ? 217 : 200,
-                              ),
-                              sectionsSpace: isWide ? 4 : 0,
-                              centerSpaceRadius: isWide ? 70 : 40,
-                              borderData: FlBorderData(show: false),
-                            ),
-                          );
-
-                    if (isWide) {
-                      return Center(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            SizedBox(
-                              width: 350,
-                              height: 350,
-                              child: pieChartWidget,
-                            ),
-                            const SizedBox(width: 50),
-                            SizedBox(
-                              width: 200,
-                              child: _buildStarLegend(
-                                appData,
-                                starRatings,
-                                totalRatings,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    } else {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          SizedBox(
-                            width: 200,
-                            height: 200,
-                            child: pieChartWidget,
+        return Scaffold(
+          // ✅ MUDE Align para Scaffold
+          body: Column(
+            children: [
+              Expanded(
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(56.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        // 1. TÍTULO CENTRALIZADO
+                        const Text(
+                          'Distribuição de Reações (Hoje)',
+                          style: TextStyle(
+                            fontSize: 35,
+                            fontWeight: FontWeight.bold,
                           ),
-                          const SizedBox(height: 16),
-                          _buildStarLegend(appData, starRatings, totalRatings),
-                        ],
-                      );
-                    }
-                  },
-                ),
+                          textAlign: TextAlign.center,
+                        ),
+                        Text(
+                          'Data: $todayFormatted - Total de Avaliações: $totalRatings',
+                          style: TextStyle(
+                            fontSize: 18,
+                            color: Colors.grey[700],
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 32),
 
-                const SizedBox(height: 70),
-                const Divider(),
+                        // 2. GRÁFICO + LEGENDA (responsivo)
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final isWide = constraints.maxWidth > 500;
 
-                // 3. DETALHES (Frequência)
-                const Text(
-                  'Frequência dos Detalhes',
-                  style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
-                  textAlign: TextAlign.left,
-                ),
-                Text(
-                  'Total de Feedbacks: $totalDetailedFeedbacks',
-                  style: TextStyle(fontSize: 19, color: Colors.grey[700]),
-                  textAlign: TextAlign.left,
-                ),
-                const SizedBox(height: 15),
-                _buildDetailedStats(detailedRatings),
+                            final pieChartWidget = totalRatings == 0
+                                ? const Center(
+                                    child: Text(
+                                      'Nenhuma avaliação de estrela ainda.',
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  )
+                                : PieChart(
+                                    PieChartData(
+                                      sections: _buildStarSections(
+                                        appData,
+                                        starRatings,
+                                        totalRatings,
+                                        isWide ? 217 : 200,
+                                      ),
+                                      sectionsSpace: isWide ? 4 : 0,
+                                      centerSpaceRadius: isWide ? 70 : 40,
+                                      borderData: FlBorderData(show: false),
+                                    ),
+                                  );
 
-                // ✅ ADICIONE os botões e gráficos condicionais:
-                const SizedBox(height: 40),
-                const Divider(),
-                const Text(
-                  'Análise dos Últimos 7 Dias',
-                  style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 20),
-                _buildViewSelector(),
-                const SizedBox(height: 20),
+                            if (isWide) {
+                              return Center(
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    SizedBox(
+                                      width: 350,
+                                      height: 350,
+                                      child: pieChartWidget,
+                                    ),
+                                    const SizedBox(width: 50),
+                                    SizedBox(
+                                      width: 200,
+                                      child: _buildStarLegend(
+                                        appData,
+                                        starRatings,
+                                        totalRatings,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            } else {
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  SizedBox(
+                                    width: 200,
+                                    height: 200,
+                                    child: pieChartWidget,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  _buildStarLegend(
+                                    appData,
+                                    starRatings,
+                                    totalRatings,
+                                  ),
+                                ],
+                              );
+                            }
+                          },
+                        ),
 
-                // ✅ APENAS UM gráfico será mostrado por vez:
-                if (_selectedView == 'Total')
-                  _buildLast7DaysBarChart(appData, selectedShift),
-                if (_selectedView == 'Média')
-                  _buildAverageBarChart(appData, selectedShift),
-                if (_selectedView ==
-                    'Mais Avaliado') // ✅ MESMO TEXTO QUE O BOTÃO
-                  _buildMostRatedBarChart(appData, selectedShift),
-              ],
-            ),
+                        const SizedBox(height: 70),
+                        const Divider(),
+
+                        // 3. DETALHES (Frequência)
+                        const Text(
+                          'Frequência dos Detalhes',
+                          style: TextStyle(
+                            fontSize: 25,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.left,
+                        ),
+                        Text(
+                          'Total de Feedbacks: $totalDetailedFeedbacks',
+                          style: TextStyle(
+                            fontSize: 19,
+                            color: Colors.grey[700],
+                          ),
+                          textAlign: TextAlign.left,
+                        ),
+                        const SizedBox(height: 15),
+                        _buildDetailedStats(detailedRatings),
+
+                        // ✅ ADICIONE os botões e gráficos condicionais:
+                        const SizedBox(height: 40),
+                        const Divider(),
+                        const Text(
+                          'Análise dos Últimos 7 Dias',
+                          style: TextStyle(
+                            fontSize: 25,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 20),
+                        _buildViewSelector(),
+                        const SizedBox(height: 20),
+
+                        // ✅ APENAS UM gráfico será mostrado por vez:
+                        if (_selectedView == 'Total')
+                          _buildLast7DaysBarChart(appData, selectedShift),
+                        if (_selectedView == 'Média')
+                          _buildAverageBarChart(appData, selectedShift),
+                        if (_selectedView == 'Mais Avaliado')
+                          _buildMostRatedBarChart(appData, selectedShift),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              // ✅ BOTÃO DE EXPORTAÇÃO FIXO NA PARTE INFERIOR
+              _buildExportButton(context),
+            ],
           ),
         );
       },
     );
+  }
+
+  // ✅ BOTÃO DE EXPORTAR COM OPÇÕES
+  Widget _buildExportButton(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: ElevatedButton.icon(
+        onPressed: () => _exportData(context),
+        icon: const Icon(Icons.download_rounded),
+        label: const Text(
+          'Exportar Dados em CSV',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color.fromARGB(255, 111, 136, 63),
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+          minimumSize: const Size(double.infinity, 60),
+        ),
+      ),
+    );
+  }
+
+  void _exportData(BuildContext context) {
+    final appData = Provider.of<AppData>(context, listen: false);
+    appData.exportCSV(context);
+  }
+
+  // ✅ MOSTRAR OPÇÕES DE EXPORTAÇÃO
+  void _showExportOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Como deseja exportar?',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            // Opção 1: Escolher pasta
+            ListTile(
+              leading: const Icon(Icons.folder_open, color: Colors.blue),
+              title: const Text('Escolher pasta para salvar'),
+              subtitle: const Text('Selecione qualquer pasta do dispositivo'),
+              onTap: () {
+                Navigator.pop(context);
+                _exportWithChoice(context);
+              },
+            ),
+            // Opção 2: Downloads
+            ListTile(
+              leading: const Icon(Icons.download, color: Colors.green),
+              title: const Text('Salvar na pasta Downloads'),
+              subtitle: const Text(
+                'Salva automaticamente na pasta de downloads',
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                _exportToDownloads(context);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _exportWithChoice(BuildContext context) {
+    final appData = Provider.of<AppData>(context, listen: false);
+    appData.exportCSV(context);
+  }
+
+  void _exportToDownloads(BuildContext context) {
+    final appData = Provider.of<AppData>(context, listen: false);
+    appData.exportToDownloads(context);
   }
 
   // Seções para o Gráfico de Pizza de Estrelas
