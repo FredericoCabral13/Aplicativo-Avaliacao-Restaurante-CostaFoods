@@ -1092,8 +1092,23 @@ class MyApp extends StatelessWidget {
       create: (context) => AppData(),
       child: MaterialApp(
         title: 'Sistema de Avaliação',
-        theme: ThemeData(primarySwatch: Colors.red),
+        theme: ThemeData(
+          primarySwatch: Colors.red,
+          useMaterial3: true, // ✅ Design mais moderno e adaptável
+        ),
         home: const AppTabsController(),
+        debugShowCheckedModeBanner: false,
+        builder: (context, child) {
+          // ✅ Força escala de texto responsiva
+          return MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              textScaleFactor: MediaQuery.of(
+                context,
+              ).textScaleFactor.clamp(0.8, 1.2),
+            ),
+            child: child!,
+          );
+        },
       ),
     );
   }
@@ -1178,6 +1193,7 @@ class _AppTabsControllerState extends State<AppTabsController> {
     setState(() {
       _selectedRatingFromHome = null;
       _initialTabIndex = null;
+      _selectedIndex = 0; // VOLTA PARA A TELA INICIAL (RatingSelectionScreen)
     });
   }
 
@@ -1420,139 +1436,143 @@ class _RatingScreenState extends State<RatingScreen> {
       _commentController.clear();
     });
     widget.onBackToHome();
+
+    // Voltar para a tela inicial após 1 segundo
+    Future.delayed(const Duration(milliseconds: 1000), () {
+      // Chama o callback para voltar à home
+      widget.onBackToHome();
+
+      // GARANTE que volta para a aba de avaliações (índice 0)
+      if (mounted) {
+        // Navega de volta para a tela inicial
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 360;
+
     return DefaultTabController(
       initialIndex: widget.initialTabIndex,
       length: 2,
-      child: Stack(
-        children: [
-          // 1. IMAGEM DE FUNDO (Primeiro item da Stack)
-          Positioned.fill(
-            child: IgnorePointer(
-              // Ignora o clique na imagem de fundo
-              child: Opacity(
-                opacity: 0.25,
-                child: ColorFiltered(
-                  colorFilter: const ColorFilter.mode(
-                    Colors.white,
-                    BlendMode.modulate,
-                  ),
-                  child: Align(
-                    alignment: Alignment.center,
-                    child: SizedBox(
-                      width: 500,
-                      height: 500,
-                      child: Image.asset(
-                        'assets/images/costa_feedbacks_logo.png',
+      child: Scaffold(
+        body: Stack(
+          children: [
+            // ✅ FUNDO RESPONSIVO
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Opacity(
+                  opacity: 0.25,
+                  child: ColorFiltered(
+                    colorFilter: const ColorFilter.mode(
+                      Colors.white,
+                      BlendMode.modulate,
+                    ),
+                    child: Align(
+                      alignment: Alignment.center,
+                      child: SizedBox(
+                        width: screenWidth * 0.7,
+                        height: screenWidth * 0.7,
+                        child: Image.asset(
+                          'assets/images/costa_feedbacks_logo.png',
+                          fit: BoxFit.contain,
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
 
-          // 2. CONTEÚDO PRINCIPAL (Segundo item da Stack)
-          Positioned.fill(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            // ✅ CONTEÚDO RESPONSIVO
+            Column(
               children: [
-                // DETALHES E ABAS: Aparecem SOMENTE após a seleção da estrela
-                if (true) ...[
-                  const Divider(height: 30),
+                // ✅ TAB BAR RESPONSIVO
+                Container(
+                  color: Colors.transparent,
+                  child: TabBar(
+                    labelColor: const Color(0xFF3F4533),
+                    unselectedLabelColor: Colors.black54,
+                    indicatorColor: const Color(0xFF3F4533),
+                    labelStyle: TextStyle(
+                      fontSize: isSmallScreen ? 14 : 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    unselectedLabelStyle: TextStyle(
+                      fontSize: isSmallScreen ? 14 : 18,
+                    ),
+                    tabs: const [
+                      Tab(text: 'Feedback Positivo'),
+                      Tab(text: 'Feedback Negativo'),
+                    ],
+                  ),
+                ),
 
-                  // TAB BAR
-                  Container(
-                    color: Colors.transparent,
-                    child: const TabBar(
-                      labelColor: Color(0xFF3F4533), //Colors.blueAccent
-                      unselectedLabelColor:
-                          Colors.black54, //#3f4533, #e2e0d1, #39422f
-                      indicatorColor: Color(0xFF3F4533), //Colors.blueAccent
-                      // ✅ MUDANÇA AQUI: Aplicando o estilo ao texto das abas
-                      labelStyle: TextStyle(
-                        fontSize: 18.0,
-                        fontWeight: FontWeight.bold,
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      DetailedFeedbackTab(
+                        sentiment: 'Positiva',
+                        onPhraseSelected: _handlePhraseSelection,
+                        selectedPhrases: _pendingDetailedPhrases,
                       ),
-                      unselectedLabelStyle: TextStyle(
-                        fontSize: 18.0,
-                        fontWeight: FontWeight.normal,
+                      DetailedFeedbackTab(
+                        sentiment: 'Negativa',
+                        onPhraseSelected: _handlePhraseSelection,
+                        selectedPhrases: _pendingDetailedPhrases,
                       ),
-                      tabs: [
-                        Tab(text: 'Feedback Positivo'),
-                        Tab(text: 'Feedback Negativo'),
-                      ],
+                    ],
+                  ),
+                ),
+
+                // ✅ COMENTÁRIO RESPONSIVO
+                Padding(
+                  padding: EdgeInsets.all(screenWidth * 0.04),
+                  child: TextField(
+                    controller: _commentController,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Escreva um comentário (Opcional)',
+                      alignLabelWithHint: true,
+                      border: OutlineInputBorder(),
+                      hintText:
+                          'Digite aqui suas sugestões, elogios ou críticas...',
                     ),
                   ),
+                ),
 
-                  // TAB BAR VIEW (Conteúdo das abas)
-                  Expanded(
-                    child: TabBarView(
-                      children: [
-                        // CORRIGIDO: Agora usa a classe DetailedFeedbackTab
-                        DetailedFeedbackTab(
-                          sentiment: 'Positiva',
-                          onPhraseSelected: _handlePhraseSelection,
-                          selectedPhrases: _pendingDetailedPhrases,
-                        ),
-                        DetailedFeedbackTab(
-                          sentiment: 'Negativa',
-                          onPhraseSelected: _handlePhraseSelection,
-                          selectedPhrases: _pendingDetailedPhrases,
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // NOVIDADE: CAMPO DE COMENTÁRIO
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      left: 16.0,
-                      right: 16.0,
-                      bottom: 20.0,
-                    ),
-                    child: TextField(
-                      controller: _commentController, // Usa o controller
-                      maxLines: 3, // Permite 3 linhas de texto
-                      decoration: const InputDecoration(
-                        labelText: 'Escreva um comentário (Opcional)',
-                        alignLabelWithHint: true,
-                        border: OutlineInputBorder(),
-                        hintText:
-                            'Digite aqui suas sugestões, elogios ou críticas...',
+                // ✅ BOTÃO RESPONSIVO
+                Padding(
+                  padding: EdgeInsets.all(screenWidth * 0.04),
+                  child: ElevatedButton(
+                    onPressed: () => _sendRating(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color.fromARGB(255, 111, 136, 63),
+                      padding: EdgeInsets.symmetric(
+                        vertical: isSmallScreen ? 12 : 15,
+                        horizontal: 20,
+                      ),
+                      minimumSize: Size(
+                        double.infinity,
+                        isSmallScreen ? 50 : 60,
                       ),
                     ),
-                  ),
-                ] else
-                  // Placeholder para empurrar o botão de envio
-                  const Expanded(child: SizedBox.shrink()),
-
-                // BOTÃO DE ENVIO: Aparece SOMENTE após a seleção da estrela
-                if (true)
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: ElevatedButton(
-                      onPressed: () => _sendRating(context),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Color.fromARGB(255, 111, 136, 63),
-                        padding: const EdgeInsets.symmetric(vertical: 15),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                      child: const Text(
-                        'Enviar Avaliação',
-                        style: TextStyle(fontSize: 25, color: Colors.white),
+                    child: Text(
+                      'Enviar Avaliação',
+                      style: TextStyle(
+                        fontSize: isSmallScreen ? 18 : 22,
+                        color: Colors.white,
                       ),
                     ),
                   ),
+                ),
               ],
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1602,24 +1622,26 @@ class DetailedFeedbackTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final categories = ['Comida', 'Serviço', 'Ambiente'];
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 360;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20.0),
+      padding: EdgeInsets.all(screenWidth * 0.05),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // ✅ CATEGORIAS RESPONSIVAS
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: categories
+            children: ['Comida', 'Serviço', 'Ambiente']
                 .map(
                   (c) => Expanded(
                     child: Center(
                       child: Text(
                         c,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontSize: 18.0, // ✅ MUDANÇA APLICADA AQUI (18.0)
+                          fontSize: isSmallScreen ? 14 : 18,
                         ),
                       ),
                     ),
@@ -1627,10 +1649,13 @@ class DetailedFeedbackTab extends StatelessWidget {
                 )
                 .toList(),
           ),
-          const SizedBox(height: 17),
+
+          SizedBox(height: screenWidth * 0.04),
+
+          // ✅ BOTÕES RESPONSIVOS
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: categories
+            children: ['Comida', 'Serviço', 'Ambiente']
                 .map(
                   (category) => Expanded(
                     child: CategoryFeedbackColumn(
@@ -1673,19 +1698,24 @@ class CategoryFeedbackColumn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Definindo variáveis de cor e frase de forma CORRETA
     final bool isPositive = sentiment == 'Positiva';
-    final Color baseColor = isPositive
-        ? Colors.green
-        : Colors.red; //Colors.blueAccent
+    final Color baseColor = isPositive ? Colors.green : Colors.red;
     final List<String> currentPhrases = phrases['$category $sentiment'] ?? [];
 
-    // Calcula a largura da tela para limitar o botão (Tablet)
+    // ✅ DETECÇÃO DE TAMANHO DE TELA
     final screenWidth = MediaQuery.of(context).size.width;
-    final maxButtonWidth = (screenWidth < 600) ? double.infinity : 200.0;
+    final isSmallScreen = screenWidth < 360;
+    final isLargeScreen = screenWidth > 600;
+
+    // ✅ LARGURA MÁXIMA RESPONSIVA
+    final maxButtonWidth = isSmallScreen
+        ? screenWidth * 0.9
+        : (isLargeScreen ? 200.0 : double.infinity);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4.0),
+      padding: EdgeInsets.symmetric(
+        horizontal: screenWidth * 0.02,
+      ), // ✅ PADDING RESPONSIVO
       child: Column(
         children: currentPhrases
             .map(
@@ -1696,8 +1726,7 @@ class CategoryFeedbackColumn extends StatelessWidget {
                   baseColor: baseColor,
                   context: context,
                   isSelected: selectedPhrases.contains(phrase),
-                  onTap: () =>
-                      onPhraseSelected(phrase), // Chama o handler do pai
+                  onTap: () => onPhraseSelected(phrase),
                 ),
               ),
             )
@@ -1706,7 +1735,7 @@ class CategoryFeedbackColumn extends StatelessWidget {
     );
   }
 
-  // MÉTODO: Cria a aparência do botão dinâmico (AGORA Stateless)
+  // ✅ MÉTODO _buildButton RESPONSIVO
   Widget _buildButton({
     required String phrase,
     required Color baseColor,
@@ -1714,6 +1743,11 @@ class CategoryFeedbackColumn extends StatelessWidget {
     required bool isSelected,
     required VoidCallback onTap,
   }) {
+    // ✅ DETECÇÃO DE TAMANHO
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 360;
+    final isLargeScreen = screenWidth > 600;
+
     // Variáveis de cor e estado
     final bool isGreen = baseColor == Colors.green;
     final Color selectedColor = isGreen
@@ -1725,53 +1759,45 @@ class CategoryFeedbackColumn extends StatelessWidget {
         : Colors.red.shade700;
     final Color unselectedTextColor = Colors.black87;
 
-    // ✅ NOVIDADE: LÓGICA DE QUEBRA DE LINHA CONTROLADA
+    // ✅ QUEBRA DE LINHA RESPONSIVA
     String formattedPhrase = phrase;
     int firstSpaceIndex = phrase.indexOf(' ');
 
     if (firstSpaceIndex != -1) {
-      // Encontra o primeiro espaço e substitui por uma quebra de linha
       formattedPhrase =
           phrase.substring(0, firstSpaceIndex) +
           '\n' +
           phrase.substring(firstSpaceIndex + 1);
     }
-    // FIM DA NOVIDADE
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      // MUDANÇA PRINCIPAL: Usamos um GestureDetector para capturar o toque
+      padding: EdgeInsets.only(
+        bottom: screenWidth * 0.02,
+      ), // ✅ ESPAÇAMENTO RESPONSIVO
       child: GestureDetector(
-        onTap: onTap, // Captura o clique
-        // O Container é nosso novo "botão" visual
+        onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          // 1. FUNDO E BORDA
           decoration: BoxDecoration(
-            color: isSelected
-                ? selectedColor
-                : unselectedColor, // Preenchimento 100%
-            borderRadius: BorderRadius.circular(8), // Borda arredondada
+            color: isSelected ? selectedColor : unselectedColor,
+            borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: isSelected
-                  ? primaryBorderColor
-                  : Colors.grey.shade400, // Borda cinza/colorida
+              color: isSelected ? primaryBorderColor : Colors.grey.shade400,
               width: isSelected ? 2.0 : 1.0,
             ),
           ),
-
-          // 2. CONTEÚDO (Texto)
+          // ✅ PADDING RESPONSIVO
+          padding: EdgeInsets.symmetric(
+            horizontal: screenWidth * 0.03,
+            vertical: isSmallScreen ? 8 : (isLargeScreen ? 12 : 10),
+          ),
           alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 10,
-          ), // Padding interno confortável
-
           child: Text(
-            formattedPhrase, // ✅ UTILIZA A STRING FORMATADA AQUI
+            formattedPhrase,
             textAlign: TextAlign.center,
+            // ✅ TEXTO RESPONSIVO
             style: TextStyle(
-              fontSize: 19.0,
+              fontSize: isSmallScreen ? 14 : (isLargeScreen ? 17 : 16),
               color: isSelected ? Colors.white : unselectedTextColor,
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
             ),
@@ -1856,20 +1882,46 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
   // ✅ ADICIONE os botões de controle
   Widget _buildViewSelector() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 360;
+
+    return Column(
       children: [
-        _buildViewButton('Total', _selectedView == 'Total'),
-        const SizedBox(width: 10),
-        _buildViewButton('Média', _selectedView == 'Média'),
-        const SizedBox(width: 10),
-        // ✅ CORREÇÃO: Mude para 'MaisAvaliado' (sem espaço)
-        _buildViewButton('Mais Avaliado', _selectedView == 'Mais Avaliado'),
+        if (isSmallScreen) // ✅ LAYOUT VERTICAL PARA TELAS PEQUENAS
+          Column(
+            children: [
+              _buildViewButton('Total', _selectedView == 'Total'),
+              SizedBox(height: 8),
+              _buildViewButton('Média', _selectedView == 'Média'),
+              SizedBox(height: 8),
+              _buildViewButton(
+                'Mais Avaliado',
+                _selectedView == 'Mais Avaliado',
+              ),
+            ],
+          )
+        else // ✅ LAYOUT HORIZONTAL PARA TELAS MÉDIAS/GRANDES
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildViewButton('Total', _selectedView == 'Total'),
+              SizedBox(width: 10),
+              _buildViewButton('Média', _selectedView == 'Média'),
+              SizedBox(width: 10),
+              _buildViewButton(
+                'Mais Avaliado',
+                _selectedView == 'Mais Avaliado',
+              ),
+            ],
+          ),
       ],
     );
   }
 
   Widget _buildViewButton(String text, bool isSelected) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 360;
+
     return ElevatedButton(
       onPressed: () => _changeView(text),
       style: ElevatedButton.styleFrom(
@@ -1877,12 +1929,19 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             ? const Color.fromARGB(255, 111, 136, 63)
             : Colors.grey[300],
         foregroundColor: isSelected ? Colors.white : Colors.black,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: EdgeInsets.symmetric(
+          horizontal: isSmallScreen ? 12 : 16,
+          vertical: isSmallScreen ? 8 : 10,
+        ),
+        minimumSize: Size(
+          isSmallScreen ? double.infinity : 0,
+          isSmallScreen ? 45 : 40,
+        ),
       ),
       child: Text(
         text,
         style: TextStyle(
-          fontSize: 16,
+          fontSize: isSmallScreen ? 14 : 16,
           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
         ),
       ),
@@ -1892,6 +1951,13 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   @override
   Widget build(BuildContext context) {
     final int selectedShift = widget.currentShift;
+
+    // ✅ DETECÇÃO DE TAMANHO
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isSmallScreen = screenWidth < 360;
+    final isLargeScreen = screenWidth > 600;
+
     return Consumer<AppData>(
       builder: (context, appData, child) {
         final starRatings = appData.getTodayStarRatings(selectedShift);
@@ -1902,65 +1968,90 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           0,
           (sum, count) => sum + count,
         );
-
         final now = DateTime.now();
         final todayFormatted = '${now.day}/${now.month}/${now.year}';
 
         return Scaffold(
-          // ✅ MUDE Align para Scaffold
           body: Column(
             children: [
               Expanded(
                 child: Align(
                   alignment: Alignment.topLeft,
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(56.0),
+                    // ✅ PADDING RESPONSIVO
+                    padding: EdgeInsets.all(
+                      isSmallScreen ? 20 : (isLargeScreen ? 40 : 32),
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       mainAxisAlignment: MainAxisAlignment.start,
                       children: [
-                        // 1. TÍTULO CENTRALIZADO
-                        const Text(
+                        // 1. TÍTULO CENTRALIZADO RESPONSIVO
+                        Text(
                           'Distribuição de Reações (Hoje)',
                           style: TextStyle(
-                            fontSize: 35,
+                            fontSize: isSmallScreen
+                                ? 24
+                                : (isLargeScreen ? 35 : 30),
                             fontWeight: FontWeight.bold,
                           ),
                           textAlign: TextAlign.center,
                         ),
+
+                        // ✅ MAIS ESPAÇO ENTRE TÍTULO E SUBTÍTULO
+                        SizedBox(height: isSmallScreen ? 12 : 16),
+
                         Text(
                           'Data: $todayFormatted - Total de Avaliações: $totalRatings',
                           style: TextStyle(
-                            fontSize: 18,
+                            fontSize: isSmallScreen
+                                ? 14
+                                : (isLargeScreen ? 18 : 16),
                             color: Colors.grey[700],
                           ),
                           textAlign: TextAlign.center,
                         ),
-                        const SizedBox(height: 32),
 
-                        // 2. GRÁFICO + LEGENDA (responsivo)
+                        // ✅ MAIS ESPAÇO ENTRE SUBTÍTULO E GRÁFICO
+                        SizedBox(height: isSmallScreen ? 28 : 50),
+
+                        // 2. GRÁFICO + LEGENDA
                         LayoutBuilder(
                           builder: (context, constraints) {
                             final isWide = constraints.maxWidth > 500;
 
+                            // ✅ TAMANHO DO GRÁFICO FIXO PARA GARANTIR VISIBILIDADE
+                            final double chartSize = isSmallScreen
+                                ? 180.0
+                                : (isLargeScreen ? 280.0 : 220.0);
+
                             final pieChartWidget = totalRatings == 0
-                                ? const Center(
-                                    child: Text(
-                                      'Nenhuma avaliação de estrela ainda.',
-                                      textAlign: TextAlign.center,
+                                ? Container(
+                                    height: chartSize,
+                                    child: const Center(
+                                      child: Text(
+                                        'Nenhuma avaliação de estrela ainda.',
+                                        textAlign: TextAlign.center,
+                                      ),
                                     ),
                                   )
-                                : PieChart(
-                                    PieChartData(
-                                      sections: _buildStarSections(
-                                        appData,
-                                        starRatings,
-                                        totalRatings,
-                                        isWide ? 217 : 200,
+                                : SizedBox(
+                                    width: chartSize,
+                                    height: chartSize,
+                                    child: PieChart(
+                                      PieChartData(
+                                        sections: _buildStarSections(
+                                          appData,
+                                          starRatings,
+                                          totalRatings,
+                                          chartSize,
+                                        ),
+                                        sectionsSpace: 2.0,
+                                        centerSpaceRadius: isSmallScreen
+                                            ? 35.0
+                                            : 50.0,
+                                        borderData: FlBorderData(show: false),
                                       ),
-                                      sectionsSpace: isWide ? 4 : 0,
-                                      centerSpaceRadius: isWide ? 70 : 40,
-                                      borderData: FlBorderData(show: false),
                                     ),
                                   );
 
@@ -1970,14 +2061,12 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                                   mainAxisSize: MainAxisSize.min,
                                   crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
+                                    pieChartWidget,
                                     SizedBox(
-                                      width: 350,
-                                      height: 350,
-                                      child: pieChartWidget,
+                                      width: isSmallScreen ? 20.0 : 40.0,
                                     ),
-                                    const SizedBox(width: 50),
                                     SizedBox(
-                                      width: 200,
+                                      width: isSmallScreen ? 120.0 : 180.0,
                                       child: _buildStarLegend(
                                         appData,
                                         starRatings,
@@ -1991,12 +2080,11 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                               return Column(
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
-                                  SizedBox(
-                                    width: 200,
-                                    height: 200,
-                                    child: pieChartWidget,
-                                  ),
-                                  const SizedBox(height: 16),
+                                  pieChartWidget,
+
+                                  // ✅ MAIS ESPAÇO ENTRE GRÁFICO E LEGENDA
+                                  SizedBox(height: isSmallScreen ? 20 : 28),
+
                                   _buildStarLegend(
                                     appData,
                                     starRatings,
@@ -2008,45 +2096,70 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                           },
                         ),
 
-                        const SizedBox(height: 70),
+                        // ✅ MAIS ESPAÇO ENTRE GRÁFICO E DIVIDER
+                        SizedBox(height: isSmallScreen ? 50 : 70),
+
                         const Divider(),
 
-                        // 3. DETALHES (Frequência)
-                        const Text(
+                        // 3. DETALHES (Frequência) RESPONSIVO
+                        Text(
                           'Frequência dos Detalhes',
                           style: TextStyle(
-                            fontSize: 25,
+                            fontSize: isSmallScreen
+                                ? 20
+                                : (isLargeScreen ? 25 : 22),
                             fontWeight: FontWeight.bold,
                           ),
                           textAlign: TextAlign.left,
                         ),
+
+                        // ✅ ESPAÇO ENTRE TÍTULO E SUBTÍTULO DOS DETALHES
+                        SizedBox(height: isSmallScreen ? 8 : 12),
+
                         Text(
                           'Total de Feedbacks: $totalDetailedFeedbacks',
                           style: TextStyle(
-                            fontSize: 19,
+                            fontSize: isSmallScreen
+                                ? 14
+                                : (isLargeScreen ? 19 : 16),
                             color: Colors.grey[700],
                           ),
                           textAlign: TextAlign.left,
                         ),
-                        const SizedBox(height: 15),
+
+                        // ✅ ESPAÇO ENTRE SUBTÍTULO E LISTA
+                        SizedBox(height: isSmallScreen ? 16 : 20),
+
                         _buildDetailedStats(detailedRatings),
 
-                        // ✅ ADICIONE os botões e gráficos condicionais:
-                        const SizedBox(height: 40),
+                        // ✅ BOTÕES E GRÁFICOS CONDICIONAIS RESPONSIVOS
+                        SizedBox(height: isSmallScreen ? 30 : 45),
+
                         const Divider(),
-                        const Text(
+
+                        // ✅ ESPAÇO ENTRE DIVIDER E TÍTULO
+                        SizedBox(height: isSmallScreen ? 8 : 12),
+
+                        Text(
                           'Análise dos Últimos 7 Dias',
                           style: TextStyle(
-                            fontSize: 25,
+                            fontSize: isSmallScreen
+                                ? 20
+                                : (isLargeScreen ? 25 : 22),
                             fontWeight: FontWeight.bold,
                           ),
                           textAlign: TextAlign.center,
                         ),
-                        const SizedBox(height: 20),
-                        _buildViewSelector(),
-                        const SizedBox(height: 20),
 
-                        // ✅ APENAS UM gráfico será mostrado por vez:
+                        // ✅ ESPAÇO ENTRE TÍTULO E BOTÕES
+                        SizedBox(height: isSmallScreen ? 18 : 24),
+
+                        _buildViewSelector(),
+
+                        // ✅ ESPAÇO ENTRE BOTÕES E GRÁFICOS
+                        SizedBox(height: isSmallScreen ? 20 : 28),
+
+                        // ✅ GRÁFICOS CONDICIONAIS
                         if (_selectedView == 'Total')
                           _buildLast7DaysBarChart(appData, selectedShift),
                         if (_selectedView == 'Média')
@@ -2058,7 +2171,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                   ),
                 ),
               ),
-              // ✅ BOTÃO DE EXPORTAÇÃO FIXO NA PARTE INFERIOR
+              // ✅ BOTÃO DE EXPORTAÇÃO
               _buildExportButton(context),
             ],
           ),
@@ -2193,10 +2306,10 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           return PieChartSectionData(
             color: appData.pieColors[star - 1],
             value: percentage,
-            radius: chartSize * 0.45,
+            radius: chartSize * 0.4, // ✅ RAIO PROPORCIONAL
             title: '${percentage.toStringAsFixed(0)}%',
-            titleStyle: const TextStyle(
-              fontSize: 14,
+            titleStyle: TextStyle(
+              fontSize: chartSize * 0.06, // ✅ TEXTO RESPONSIVO
               fontWeight: FontWeight.bold,
               color: Colors.white,
             ),
@@ -2766,6 +2879,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 const Color costaFoodsColor = Color(0xFF3F4533);
 
 // NOVO WIDGET (Substitui HelloScreen): A tela inicial de seleção da nota
+// NOVO WIDGET (Substitui HelloScreen): A tela inicial de seleção da nota
 class RatingSelectionScreen extends StatefulWidget {
   final Function(int, int) onRatingSelected;
   final int? selectedRating;
@@ -2806,9 +2920,14 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isSmallScreen = screenWidth < 360;
+    final isLargeScreen = screenWidth > 600;
+
     return Stack(
       children: [
-        // ✅ IMAGEM DE FUNDO
+        // ✅ IMAGEM DE FUNDO RESPONSIVA
         Positioned.fill(
           child: IgnorePointer(
             child: Opacity(
@@ -2821,10 +2940,11 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                 child: Align(
                   alignment: Alignment.center,
                   child: SizedBox(
-                    width: 500,
-                    height: 500,
+                    width: screenWidth * 0.8,
+                    height: screenWidth * 0.8,
                     child: Image.asset(
                       'assets/images/costa_feedbacks_logo.png',
+                      fit: BoxFit.contain,
                     ),
                   ),
                 ),
@@ -2832,56 +2952,82 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
             ),
           ),
         ),
-        // ✅ CONTEÚDO PRINCIPAL
+
+        // ✅ CONTEÚDO PRINCIPAL RESPONSIVO - AGORA CORRETAMENTE CENTRALIZADO
         Positioned.fill(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text(
-                  'Qual sua experiência geral?',
-                  style: TextStyle(fontSize: 44, fontWeight: FontWeight.bold),
-                ),
-                Consumer<AppData>(
-                  builder: (context, appData, child) {
-                    final now = DateTime.now();
-                    final todayFormatted =
-                        '${now.day}/${now.month}/${now.year}';
-                    return Text(
-                      'Hoje: $todayFormatted',
-                      style: TextStyle(fontSize: 20, color: Colors.grey[600]),
-                    );
-                  },
-                ),
-                const SizedBox(height: 40),
-                ...List.generate(5, (index) {
-                  final int starValue = index + 1;
-                  final String currentEmoji = _ratingEmojis[index];
-                  final bool isSelected = starValue == _selectedStars;
+          child: SafeArea(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.symmetric(
+                horizontal: screenWidth * 0.05,
+                vertical: screenHeight * 0.02,
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // ✅ TÍTULO RESPONSIVO
+                  Text(
+                    'Qual sua experiência geral?',
+                    style: TextStyle(
+                      fontSize: isSmallScreen ? 28 : (isLargeScreen ? 44 : 36),
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
 
-                  final List<String> legendas = [
-                    'Péssimo',
-                    'Ruim',
-                    'Neutro',
-                    'Bom',
-                    'Excelente',
-                  ];
-                  final String legendaAtual = legendas[index];
+                  // ✅ DATA RESPONSIVA
+                  Consumer<AppData>(
+                    builder: (context, appData, child) {
+                      final now = DateTime.now();
+                      final todayFormatted =
+                          '${now.day}/${now.month}/${now.year}';
+                      return Text(
+                        'Hoje: $todayFormatted',
+                        style: TextStyle(
+                          fontSize: isSmallScreen ? 14 : 18,
+                          color: Colors.grey[600],
+                        ),
+                        textAlign: TextAlign.center,
+                      );
+                    },
+                  ),
 
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8.0),
-                    child: Container(
-                      width: 500,
+                  SizedBox(height: screenHeight * 0.04),
+
+                  // ✅ EMOJIS RESPONSIVOS E CORRETAMENTE CENTRALIZADOS
+                  ...List.generate(5, (index) {
+                    final int starValue = index + 1;
+                    final String currentEmoji = _ratingEmojis[index];
+                    final bool isSelected = starValue == _selectedStars;
+
+                    final List<String> legendas = [
+                      'Péssimo',
+                      'Ruim',
+                      'Neutro',
+                      'Bom',
+                      'Excelente',
+                    ];
+                    final String legendaAtual = legendas[index];
+
+                    return Container(
+                      width: screenWidth * 0.9, // ✅ LARGURA CONTROLADA
+                      margin: EdgeInsets.symmetric(
+                        vertical: screenHeight * 0.01,
+                      ),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisAlignment: MainAxisAlignment
+                            .center, // ✅ CENTRALIZA TODO O CONTEÚDO
                         crossAxisAlignment: CrossAxisAlignment.center,
+                        mainAxisSize: MainAxisSize
+                            .min, // ✅ IMPEDE QUE OCUPE LARGURA TOTAL
                         children: [
+                          // ✅ EMOJI AGORA CENTRALIZADO E MAIOR
                           Container(
-                            width: 100,
-                            alignment: Alignment.centerRight,
+                            width: screenWidth * 0.2,
                             child: IconButton(
                               onPressed: () => _handleEmojiClick(starValue),
-                              padding: const EdgeInsets.all(8.0),
+                              padding:
+                                  EdgeInsets.zero, // ✅ REMOVE PADDING EXTRA
                               style: ButtonStyle(
                                 side: WidgetStateProperty.all(BorderSide.none),
                                 backgroundColor:
@@ -2898,20 +3044,13 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                                 overlayColor: WidgetStateProperty.all(
                                   Colors.transparent,
                                 ),
-                                elevation:
-                                    WidgetStateProperty.resolveWith<double?>((
-                                      Set<WidgetState> states,
-                                    ) {
-                                      return isSelected ? 8.0 : 0.0;
-                                    }),
-                                shadowColor: WidgetStateProperty.all(
-                                  Colors.black.withOpacity(0.3),
-                                ),
                               ),
                               icon: TweenAnimationBuilder<double>(
                                 tween: Tween<double>(
                                   begin: 1.0,
-                                  end: isSelected ? 1.2 : 1.0,
+                                  end: isSelected
+                                      ? 1.3
+                                      : 1.0, // ✅ AUMENTEI A ANIMAÇÃO DE SELEÇÃO
                                 ),
                                 duration: const Duration(milliseconds: 200),
                                 builder:
@@ -2924,17 +3063,26 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                                         scale: scale,
                                         child: Text(
                                           currentEmoji,
-                                          style: const TextStyle(fontSize: 110),
+                                          style: TextStyle(
+                                            // ✅ TAMANHO AUMENTADO E PROPORCIONAL
+                                            fontSize: isSmallScreen
+                                                ? 50 // Aumentado de 40 para 50
+                                                : (isLargeScreen
+                                                      ? 100
+                                                      : 80), // Aumentado de 90/70 para 100/80
+                                          ),
                                         ),
                                       );
                                     },
                               ),
                             ),
                           ),
-                          const SizedBox(width: 70),
-                          Container(
-                            width: 200,
-                            alignment: Alignment.centerLeft,
+
+                          SizedBox(width: screenWidth * 0.04),
+
+                          // ✅ LEGENDA RESPONSIVA
+                          Flexible(
+                            // ✅ USA FLEXIBLE EM VEZ DE EXPANDED
                             child: Consumer<AppData>(
                               builder: (context, appData, child) {
                                 final starRatings = appData.getTodayStarRatings(
@@ -2944,26 +3092,31 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
 
                                 return Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Text(
                                       legendaAtual,
                                       style: TextStyle(
-                                        fontSize: 40,
+                                        fontSize: isSmallScreen
+                                            ? 18
+                                            : (isLargeScreen ? 32 : 24),
                                         fontWeight: FontWeight.w500,
                                         color: isSelected
                                             ? Colors.black
                                             : Colors.grey[700],
                                       ),
+                                      textAlign: TextAlign.left,
                                     ),
                                     Text(
                                       count == 1
-                                          ? '(${count} avaliação hoje)'
-                                          : '(${count} avaliações hoje)',
+                                          ? '($count avaliação hoje)'
+                                          : '($count avaliações hoje)',
                                       style: TextStyle(
-                                        fontSize: 20,
+                                        fontSize: isSmallScreen ? 12 : 16,
                                         color: Colors.grey[600],
                                         fontStyle: FontStyle.italic,
                                       ),
+                                      textAlign: TextAlign.left,
                                     ),
                                   ],
                                 );
@@ -2972,10 +3125,10 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                           ),
                         ],
                       ),
-                    ),
-                  );
-                }),
-              ],
+                    );
+                  }),
+                ],
+              ),
             ),
           ),
         ),
