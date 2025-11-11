@@ -14,7 +14,7 @@ A aplicação é desenvolvida através do kit de desenvolvimento de software _**
 - Baixe e instale o Flutter SDK (Software Development Kit) mais recente do site oficial do Flutter;
 - Adicione o caminho para o diretório bin do Flutter à variável de ambiente PATH do sistema operacional. Isso permite que os comandos flutter e dart sejam executados de qualquer local;
 - Abra o VS Code, vá para a seção de Extensões (Ctrl+Shift+X) e instale as extensões oficiais "Flutter" e "Dart";
-- VAbra o terminal (no VS Code ou no sistema) e execute: ```flutter doctor```;
+- Abra o terminal (no VS Code ou no sistema) e execute: ```flutter doctor```;
 - Aceite as Licenças do Android (se o flutter doctor indicar que faltam as licenças, execute: ```flutter doctor --android-licenses```. Aceite os termos digitando 'y' quando solicitado;
 - No VS Code, abra a pasta raiz do projeto que foi baixado;
 - Abra o terminal do VS Code (Ctrl+Shift+') e execute o comando para instalar todos os pacotes listados no arquivo ```pubspec.yaml```: ```flutter pub get```;
