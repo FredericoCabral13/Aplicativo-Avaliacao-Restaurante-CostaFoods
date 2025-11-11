@@ -10,7 +10,7 @@ A aplicação é desenvolvida através do kit de desenvolvimento de software _**
 ## Como rodá-lo para futuras modificações
 - Baixe no computador os programas Visual Studio Code e Android Studio;
 - Crie um ambiente de emulação de um dispositivo mobile através de Device Manager > Add a new device > Create Virtual Device > Tablet (caso deseja emular um tablet) > Medium **ou** Pixel Tablet > Next > Finish;
-- Abra esse diretório no Visual Studio Code;
+- Abra o diretório deste projeto no VS Code;
 - Baixe e instale o Flutter SDK (Software Development Kit) mais recente do site oficial do Flutter;
 - Adicione o caminho para o diretório bin do Flutter à variável de ambiente PATH do sistema operacional. Isso permite que os comandos flutter e dart sejam executados de qualquer local;
 - Abra o VS Code, vá para a seção de Extensões (Ctrl+Shift+X) e instale as extensões oficiais "Flutter" e "Dart";
