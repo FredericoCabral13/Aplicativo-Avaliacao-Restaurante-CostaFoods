@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:provider/provider.dart';
 
+import 'dart:async'; // Importação do Timer
+
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:csv/csv.dart';
@@ -418,13 +420,17 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  // ✅ DIALOG DE SUCESSO COM OPÇÕES
+  /// ✅ DIALOG DE SUCESSO COM OPÇÕES (CORRIGIDO)
   Future<void> _showExportSuccessDialog(
     BuildContext context,
     String filePath,
   ) async {
+    // ✅ GARANTE QUE O CONTEXTO AINDA ESTÁ VÁLIDO
+    if (!context.mounted) return;
+
     final result = await showDialog<int>(
       context: context,
+      barrierDismissible: true, // ✅ PERMITE FECHAR CLICANDO FORA
       builder: (context) => AlertDialog(
         title: const Text('Exportação Concluída!'),
         content: const Text(
@@ -446,6 +452,8 @@ class AppData extends ChangeNotifier {
         ],
       ),
     );
+
+    if (!context.mounted) return;
 
     switch (result) {
       case 1: // Abrir Arquivo
@@ -490,31 +498,38 @@ class AppData extends ChangeNotifier {
 
   String? _lastSavedPath; // ✅ Guardar o último caminho salvo
 
-  // ✅ MÉTODO PARA SALVAR EM PASTA VISÍVEL
+  // ✅ MÉTODO PARA SALVAR EM PASTA VISÍVEL (CORRIGIDO)
   Future<void> exportCSV(BuildContext context) async {
     try {
       final csvData = await _generateCSVContent();
 
-      // Mostrar opções
-      final result = await showDialog<int>(
+      // ✅ USA Navigator.push para garantir que o pop-up seja gerenciado corretamente
+      await showDialog<int>(
         context: context,
+        barrierDismissible: true, // ✅ PERMITE FECHAR CLICANDO FORA
         builder: (context) => AlertDialog(
           title: const Text('Exportar Dados'),
           content: const Text('Escolha como deseja exportar o arquivo CSV:'),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(1),
+              onPressed: () {
+                Navigator.of(context).pop(1); // ✅ FECHA O DIALOG
+                _saveToDownloads(context, csvData);
+              },
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.save, color: Colors.blue),
                   SizedBox(width: 8),
-                  Text('Salvar na Pasta Downloads'),
+                  Text('Salvar no dispositivo'),
                 ],
               ),
             ),
             TextButton(
-              onPressed: () => Navigator.of(context).pop(2),
+              onPressed: () {
+                Navigator.of(context).pop(2); // ✅ FECHA O DIALOG
+                _shareFile(context, csvData);
+              },
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -525,18 +540,12 @@ class AppData extends ChangeNotifier {
               ),
             ),
             TextButton(
-              onPressed: () => Navigator.of(context).pop(0),
+              onPressed: () => Navigator.of(context).pop(0), // ✅ FECHA O DIALOG
               child: const Text('Cancelar'),
             ),
           ],
         ),
       );
-
-      if (result == 1) {
-        await _saveToDownloads(context, csvData);
-      } else if (result == 2) {
-        await _shareFile(context, csvData);
-      }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -757,7 +766,7 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  // ✅ SALVAR NA PASTA DOWNLOADS (VISÍVEL)
+  // ✅ SALVAR NO DISPOSITIVO
   Future<void> _saveToDownloads(BuildContext context, String csvData) async {
     try {
       // Tentar acessar o storage externo (Downloads)
@@ -1128,6 +1137,19 @@ class _AppTabsControllerState extends State<AppTabsController> {
   int? _selectedRatingFromHome;
   int? _initialTabIndex;
 
+  // ✅ SENHA PARA ACESSAR ESTATÍSTICAS
+  final String _statisticsPassword = "1234"; // Senha definida no código
+  bool _showPasswordDialog = false;
+  String _enteredPassword = "";
+
+  // ✅ Timer para voltar à tela inicial após inatividade
+  Timer? _inactivityTimer;
+  final Duration _inactivityDuration = const Duration(seconds: 20);
+
+  // ✅ TIMER ESPECÍFICO PARA O TECLADO NUMÉRICO
+  Timer? _keyboardInactivityTimer;
+  final Duration _keyboardInactivityDuration = const Duration(seconds: 20);
+
   // 1. Lógica para determinar o turno padrão baseado no horário atual
   int _calculateDefaultShift() {
     final hour = DateTime.now().hour;
@@ -1145,11 +1167,160 @@ class _AppTabsControllerState extends State<AppTabsController> {
     super.initState();
     // Inicializa o turno com o valor padrão
     _currentShift = _calculateDefaultShift();
+    _startInactivityTimer(); // ✅ INICIA O TIMER
+  }
+
+  @override
+  void dispose() {
+    _keyboardInactivityTimer?.cancel(); // ✅ CANCELA TIMER DO TECLADO
+    super.dispose();
+  }
+
+  // ✅ INICIA O TIMER DE INATIVIDADE
+  void _startInactivityTimer() {
+    _inactivityTimer?.cancel();
+    _inactivityTimer = Timer(_inactivityDuration, () {
+      if (_selectedIndex != 0 && mounted) {
+        _resetToHomeScreen(); // Volta para a tela inicial
+      }
+    });
+  }
+
+  // ✅ VOLTA PARA TELA INICIAL
+  void _resetToHomeScreen() {
+    // ✅ FECHA TODOS OS POP-UPS E SNACKBARS ANTES DE MUDAR DE TELA
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    ScaffoldMessenger.of(context).clearSnackBars();
+    setState(() {
+      _selectedIndex = 0;
+      _currentShift = _calculateDefaultShift();
+      _selectedRatingFromHome = null;
+      _initialTabIndex = null;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Voltando para tela inicial por inatividade'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  // ✅ REINICIA O TIMER A CADA INTERAÇÃO
+  void _resetTimerOnInteraction() {
+    _startInactivityTimer();
+  }
+
+  // ✅ MOSTRA O DIALOG DE SENHA
+  void _showPasswordInput() {
+    setState(() {
+      _showPasswordDialog = true;
+      _enteredPassword = "";
+    });
+    _startKeyboardInactivityTimer(); // ✅ INICIA TIMER DO TECLADO
+  }
+
+  // ✅ INICIA O TIMER DE INATIVIDADE DO TECLADO
+  void _startKeyboardInactivityTimer() {
+    _keyboardInactivityTimer?.cancel();
+    _keyboardInactivityTimer = Timer(_keyboardInactivityDuration, () {
+      if (_showPasswordDialog && mounted) {
+        _closeKeyboardDueToInactivity();
+      }
+    });
+  }
+
+  // ✅ FECHA O TECLADO POR INATIVIDADE
+  void _closeKeyboardDueToInactivity() {
+    setState(() {
+      _showPasswordDialog = false;
+      _enteredPassword = "";
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Teclado fechado por inatividade'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  // ✅ REINICIA O TIMER DO TECLADO A CADA INTERAÇÃO
+  void _resetKeyboardTimer() {
+    _startKeyboardInactivityTimer();
+  }
+
+  // ✅ VERIFICA A SENHA
+  void _checkPassword() {
+    _keyboardInactivityTimer?.cancel(); // ✅ CANCELA TIMER DO TECLADO
+    if (_enteredPassword == _statisticsPassword) {
+      // Senha correta - permite acesso às estatísticas
+      setState(() {
+        _showPasswordDialog = false;
+        _enteredPassword = "";
+        _selectedIndex = 2; // Navega para estatísticas
+      });
+    } else {
+      // Senha incorreta - mostra erro
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Senha incorreta! Tente novamente.'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      setState(() {
+        _enteredPassword = ""; // Limpa o campo
+      });
+    }
+  }
+
+  // ✅ CANCELA O DIGITAR DA SENHA
+  void _cancelPassword() {
+    _keyboardInactivityTimer?.cancel(); // ✅ CANCELA TIMER DO TECLADO
+    setState(() {
+      _showPasswordDialog = false;
+      _enteredPassword = "";
+    });
+  }
+
+  // ✅ ADICIONA DÍGITO À SENHA
+  void _addDigit(String digit) {
+    _resetKeyboardTimer(); // ✅ REINICIA TIMER DO TECLADO
+    if (_enteredPassword.length < 4) {
+      setState(() {
+        _enteredPassword += digit;
+      });
+
+      // Verifica automaticamente quando completar 4 dígitos
+      if (_enteredPassword.length == 4) {
+        _checkPassword();
+      }
+    }
+  }
+
+  // ✅ REMOVE O ÚLTIMO DÍGITO
+  void _removeDigit() {
+    _resetKeyboardTimer(); // ✅ REINICIA TIMER DO TECLADO
+    if (_enteredPassword.isNotEmpty) {
+      setState(() {
+        _enteredPassword = _enteredPassword.substring(
+          0,
+          _enteredPassword.length - 1,
+        );
+      });
+    }
   }
 
   // 2. MUDANÇA: Novo comportamento ao tocar nos itens da barra
   void _onItemTapped(int index) {
+    _resetTimerOnInteraction(); // ✅ REINICIA TIMER
     // Se o usuário está voltando para a tela de Avaliação (índice 0)
+    // ✅ VERIFICA SE É A ABA DE ESTATÍSTICAS (índice 2)
+    if (index == 2) {
+      _showPasswordInput();
+      return; // Impede a navegação imediata
+    }
     if (index == 0) {
       final defaultShift = _calculateDefaultShift();
 
@@ -1173,6 +1344,7 @@ class _AppTabsControllerState extends State<AppTabsController> {
 
   // Função chamada pelo menu para trocar o turno (permanece inalterada)
   void _selectShift(int shift) {
+    _resetTimerOnInteraction(); // ✅ REINICIA TIMER
     setState(() {
       _currentShift = shift;
     });
@@ -1197,39 +1369,216 @@ class _AppTabsControllerState extends State<AppTabsController> {
     });
   }
 
+  // ✅ CONSTRÓI O DIALOG DE SENHA
+  Widget _buildPasswordDialog() {
+    return GestureDetector(
+      onTap: _resetKeyboardTimer, // ✅ DETECTA TOQUES NO DIALOG
+      behavior: HitTestBehavior.translucent,
+      child: Container(
+        color: Colors.black54,
+        child: Center(
+          child: GestureDetector(
+            onTap: _resetKeyboardTimer, // ✅ DETECTA TOQUES NO CARD
+            child: Container(
+              width: 300,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Senha de Acesso',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Color.fromARGB(255, 111, 136, 63),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Digite a senha para acessar as estatísticas:',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 16),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // ✅ INDICADOR DE DÍGITOS
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(4, (index) {
+                      return GestureDetector(
+                        onTap:
+                            _resetKeyboardTimer, // ✅ DETECTA TOQUES NOS INDICADORES
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          margin: const EdgeInsets.symmetric(horizontal: 8),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey),
+                            borderRadius: BorderRadius.circular(8),
+                            color: index < _enteredPassword.length
+                                ? const Color.fromARGB(255, 0, 0, 0)
+                                : Colors.transparent,
+                          ),
+                          child: Center(
+                            child: Text(
+                              index < _enteredPassword.length ? '•' : '',
+                              style: const TextStyle(
+                                fontSize: 20,
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 30),
+
+                  // ✅ TECLADO NUMÉRICO
+                  GridView.count(
+                    shrinkWrap: true,
+                    crossAxisCount: 3,
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    children: [
+                      for (int i = 1; i <= 9; i++)
+                        _buildNumberButton(i.toString()),
+                      _buildEmptyButton(),
+                      _buildNumberButton('0'),
+                      _buildBackspaceButton(),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ✅ BOTÕES DE AÇÃO
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _cancelPassword,
+                          child: const Text('Cancelar'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: _enteredPassword.isNotEmpty
+                              ? _checkPassword
+                              : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color.fromARGB(
+                              255,
+                              111,
+                              136,
+                              63,
+                            ),
+                          ),
+                          child: const Text(
+                            'Verificar',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ✅ BOTÃO NUMÉRICO
+  Widget _buildNumberButton(String number) {
+    return ElevatedButton(
+      onPressed: () {
+        _resetKeyboardTimer(); // ✅ REINICIA TIMER AO CLICAR
+        _addDigit(number);
+      },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: const Color.fromARGB(255, 255, 255, 255),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+      child: Text(
+        number,
+        style: const TextStyle(
+          fontSize: 18,
+          color: Color.fromARGB(255, 0, 0, 0),
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  // ✅ BOTÃO VAZIO (para alinhamento)
+  Widget _buildEmptyButton() {
+    return const SizedBox.shrink();
+  }
+
+  // ✅ BOTÃO DE APAGAR
+  Widget _buildBackspaceButton() {
+    return ElevatedButton(
+      onPressed: () {
+        _resetKeyboardTimer(); // ✅ REINICIA TIMER AO CLICAR
+        _removeDigit();
+      },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.red,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+      child: const Icon(Icons.backspace, color: Colors.white),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // CORREÇÃO: Definição da lista DENTRO do método build, onde ela é usada.
-    // MUDANÇA: Passa o 'currentShift' para as telas filhas.
     final List<Widget> widgetOptions = <Widget>[
-      RatingSelectionScreen(
-        onRatingSelected: _navigateToFeedbackScreen,
-        selectedRating: _selectedRatingFromHome,
-        currentShift: _currentShift,
-      ), // // NOVO: Tela de emojis (NOVO ÍNDICE 0)
-      RatingScreen(
-        currentShift: _currentShift,
-        initialRating: _selectedRatingFromHome ?? 0,
-        initialTabIndex: _initialTabIndex ?? 0,
-        onBackToHome: _resetHomeScreen, // ✅ ADICIONE ESTE PARÂMETRO
+      GestureDetector(
+        onTap: _resetTimerOnInteraction,
+        behavior: HitTestBehavior.translucent,
+        child: RatingSelectionScreen(
+          onRatingSelected: _navigateToFeedbackScreen,
+          selectedRating: _selectedRatingFromHome,
+          currentShift: _currentShift,
+        ),
       ),
-      StatisticsScreen(currentShift: _currentShift),
+      GestureDetector(
+        onTap: _resetTimerOnInteraction,
+        behavior: HitTestBehavior.translucent,
+        child: RatingScreen(
+          currentShift: _currentShift,
+          initialRating: _selectedRatingFromHome ?? 0,
+          initialTabIndex: _initialTabIndex ?? 0,
+          onBackToHome: _resetHomeScreen,
+        ),
+      ),
+      GestureDetector(
+        onTap: _resetTimerOnInteraction,
+        behavior: HitTestBehavior.translucent,
+        child: StatisticsScreen(currentShift: _currentShift),
+      ),
     ];
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
           _selectedIndex == 0
-              ? 'Avaliação do Restaurante (Turno $_currentShift)' // Exibe o turno no título
+              ? 'Avaliação do Restaurante (Turno $_currentShift)'
               : 'Estatísticas das Avaliações (Turno $_currentShift)',
           style: const TextStyle(
-            fontSize: 24.0, // Aumentado para 24.0
+            fontSize: 24.0,
             fontWeight: FontWeight.bold,
-            color: Colors
-                .white, // Garante que o texto fique branco contra o fundo escuro
+            color: Colors.white,
           ),
         ),
-        backgroundColor: Color.fromARGB(255, 111, 136, 63), //Colors.blueAccent
+        backgroundColor: Color.fromARGB(255, 111, 136, 63),
         elevation: 4,
         actions: _selectedIndex == 1
             ? [
@@ -1239,6 +1588,7 @@ class _AppTabsControllerState extends State<AppTabsController> {
                     color: Colors.white,
                   ),
                   onPressed: () {
+                    _resetTimerOnInteraction();
                     setState(() {
                       _selectedIndex = 0;
                     });
@@ -1262,42 +1612,50 @@ class _AppTabsControllerState extends State<AppTabsController> {
                   icon: const Icon(
                     Icons.access_time_filled,
                     color: Colors.white,
-                  ), // Ícone do relógio/turno
+                  ),
                 ),
               ],
       ),
-      body: Center(
-        child: widgetOptions.elementAt(_selectedIndex),
-      ), // Usa 'widgetOptions'
-      bottomNavigationBar: BottomNavigationBar(
-        items: const <BottomNavigationBarItem>[
-          // ... (Itens da barra de navegação)
-          BottomNavigationBarItem(
-            icon: Icon(
-              Icons.insert_emoticon_rounded,
-            ), // Ícone de casa ou outro de sua preferência
-            label: 'Avaliações', // Rótulo da nova aba
+      body: Stack(
+        children: [
+          // CONTEÚDO PRINCIPAL
+          GestureDetector(
+            onTap: _resetTimerOnInteraction,
+            behavior: HitTestBehavior.translucent,
+            child: Center(child: widgetOptions.elementAt(_selectedIndex)),
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.task_alt_rounded),
-            label: 'Feedbacks',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart),
-            label: 'Estatísticas',
-          ),
+
+          // ✅ DIALOG DE SENHA (se necessário)
+          if (_showPasswordDialog) _buildPasswordDialog(),
         ],
-        // ✅ NOVIDADE: Aumenta o tamanho da fonte para 16 (ou o valor desejado)
-        selectedLabelStyle: const TextStyle(
-          fontSize: 16.0,
-          fontWeight: FontWeight.bold,
+      ),
+      bottomNavigationBar: GestureDetector(
+        onTap: _resetTimerOnInteraction,
+        behavior: HitTestBehavior.translucent,
+        child: BottomNavigationBar(
+          items: const <BottomNavigationBarItem>[
+            BottomNavigationBarItem(
+              icon: Icon(Icons.insert_emoticon_rounded),
+              label: 'Avaliações',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.task_alt_rounded),
+              label: 'Feedbacks',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.bar_chart),
+              label: 'Estatísticas',
+            ),
+          ],
+          selectedLabelStyle: const TextStyle(
+            fontSize: 16.0,
+            fontWeight: FontWeight.bold,
+          ),
+          unselectedLabelStyle: const TextStyle(fontSize: 14.0),
+          currentIndex: _selectedIndex,
+          selectedItemColor: Colors.green.shade700,
+          onTap: _onItemTapped,
         ),
-        unselectedLabelStyle: const TextStyle(
-          fontSize: 14.0,
-        ), // Opção: deixar a não selecionada um pouco menor
-        currentIndex: _selectedIndex,
-        selectedItemColor: Colors.green.shade700, //Colors.blueAccent
-        onTap: _onItemTapped,
       ),
     );
   }
@@ -1820,9 +2178,39 @@ class StatisticsScreen extends StatefulWidget {
   State<StatisticsScreen> createState() => _StatisticsScreenState();
 }
 
-class _StatisticsScreenState extends State<StatisticsScreen> {
+class _StatisticsScreenState extends State<StatisticsScreen>
+    with WidgetsBindingObserver {
   // ✅ ADICIONE: Estado para controlar o tipo de gráfico
   String _selectedView = 'Total'; // 'Total', 'Média', 'MaisAvaliado'
+
+  OverlayEntry? _exportOverlayEntry;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _closeAllOverlays();
+    super.dispose();
+  }
+
+  // ✅ FECHA TODOS OS OVERLAYS/POP-UPS
+  void _closeAllOverlays() {
+    _exportOverlayEntry?.remove();
+    _exportOverlayEntry = null;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      _closeAllOverlays();
+    }
+  }
 
   void _changeView(String view) {
     setState(() {
@@ -2180,7 +2568,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
-  // ✅ BOTÃO DE EXPORTAR COM OPÇÕES
+  // ✅ MODIFIQUE O MÉTODO _buildExportButton para usar Navigator
   Widget _buildExportButton(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16.0),
@@ -2195,7 +2583,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
         ],
       ),
       child: ElevatedButton.icon(
-        onPressed: () => _exportData(context),
+        onPressed: () => _exportDataWithSafety(context),
         icon: const Icon(Icons.download_rounded),
         label: const Text(
           'Exportar Dados em CSV',
@@ -2209,6 +2597,15 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
         ),
       ),
     );
+  }
+
+  // ✅ NOVO MÉTODO SEGURO PARA EXPORTAÇÃO
+  void _exportDataWithSafety(BuildContext context) {
+    // Fecha qualquer pop-up existente antes de abrir novo
+    Navigator.of(context).popUntil((route) => route.isFirst);
+
+    final appData = Provider.of<AppData>(context, listen: false);
+    appData.exportCSV(context);
   }
 
   void _exportData(BuildContext context) {
@@ -2261,10 +2658,8 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             // Opção 2: Downloads
             ListTile(
               leading: const Icon(Icons.download, color: Colors.green),
-              title: const Text('Salvar na pasta Downloads'),
-              subtitle: const Text(
-                'Salva automaticamente na pasta de downloads',
-              ),
+              title: const Text('Salvar no dispositivo'),
+              subtitle: const Text('Salva automaticamente no dispositivo'),
               onTap: () {
                 Navigator.pop(context);
                 _exportToDownloads(context);
