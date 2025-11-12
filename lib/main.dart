@@ -16,6 +16,8 @@ import 'package:share_plus/share_plus.dart';
 
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:flutter/services.dart'; // ✅ PARA FilteringTextInputFormatter
+
 // Definido uma ÚNICA vez no topo do arquivo (Correção do Erro de Duplicação)
 typedef PhraseSelectedCallback = void Function(String phrase);
 
@@ -1142,13 +1144,16 @@ class _AppTabsControllerState extends State<AppTabsController> {
   bool _showPasswordDialog = false;
   String _enteredPassword = "";
 
+  // ✅ CONTROLLER PERMANENTE PARA O CAMPO DE SENHA
+  final TextEditingController _passwordController = TextEditingController();
+
   // ✅ Timer para voltar à tela inicial após inatividade
   Timer? _inactivityTimer;
   final Duration _inactivityDuration = const Duration(seconds: 20);
 
   // ✅ TIMER ESPECÍFICO PARA O TECLADO NUMÉRICO
   Timer? _keyboardInactivityTimer;
-  final Duration _keyboardInactivityDuration = const Duration(seconds: 20);
+  final Duration _keyboardInactivityDuration = const Duration(seconds: 5);
 
   // 1. Lógica para determinar o turno padrão baseado no horário atual
   int _calculateDefaultShift() {
@@ -1172,7 +1177,9 @@ class _AppTabsControllerState extends State<AppTabsController> {
 
   @override
   void dispose() {
-    _keyboardInactivityTimer?.cancel(); // ✅ CANCELA TIMER DO TECLADO
+    _inactivityTimer?.cancel();
+    _keyboardInactivityTimer?.cancel();
+    _passwordController.dispose(); // ✅ DISPOSE DO CONTROLLER
     super.dispose();
   }
 
@@ -1180,17 +1187,28 @@ class _AppTabsControllerState extends State<AppTabsController> {
   void _startInactivityTimer() {
     _inactivityTimer?.cancel();
     _inactivityTimer = Timer(_inactivityDuration, () {
-      if (_selectedIndex != 0 && mounted) {
-        _resetToHomeScreen(); // Volta para a tela inicial
+      // ✅ VOLTA PARA TELA INICIAL MESMO COM DIALOG ABERTO
+      if ((_selectedIndex != 0 || _showPasswordDialog) && mounted) {
+        _resetToHomeScreen();
       }
     });
   }
 
-  // ✅ VOLTA PARA TELA INICIAL
+  // ✅ VOLTA PARA TELA INICIAL (COM FECHAMENTO DE DIALOGS)
   void _resetToHomeScreen() {
-    // ✅ FECHA TODOS OS POP-UPS E SNACKBARS ANTES DE MUDAR DE TELA
-    Navigator.of(context).popUntil((route) => route.isFirst);
+    // ✅ FECHA TODOS OS DIALOGS E POP-UPS PRIMEIRO
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
+
+    // ✅ CANCELA TIMERS
+    _keyboardInactivityTimer?.cancel();
+
+    // ✅ LIMPA CONTROLLER DE SENHA
+    _passwordController.clear();
+
     ScaffoldMessenger.of(context).clearSnackBars();
+
     setState(() {
       _selectedIndex = 0;
       _currentShift = _calculateDefaultShift();
@@ -1211,20 +1229,27 @@ class _AppTabsControllerState extends State<AppTabsController> {
     _startInactivityTimer();
   }
 
-  // ✅ MOSTRA O DIALOG DE SENHA
+  // ✅ MOSTRA O DIALOG DE SENHA COM TECLADO NATIVO
   void _showPasswordInput() {
-    setState(() {
-      _showPasswordDialog = true;
-      _enteredPassword = "";
+    _passwordController.clear(); // ✅ LIMPA O CAMPO
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _buildPasswordDialog(),
+    ).then((_) {
+      _keyboardInactivityTimer?.cancel(); // ✅ CANCELA TIMER AO FECHAR
     });
-    _startKeyboardInactivityTimer(); // ✅ INICIA TIMER DO TECLADO
+
+    // ✅ INICIA O TIMER APÓS ABRIR O DIALOG
+    _startKeyboardInactivityTimer();
   }
 
   // ✅ INICIA O TIMER DE INATIVIDADE DO TECLADO
   void _startKeyboardInactivityTimer() {
     _keyboardInactivityTimer?.cancel();
     _keyboardInactivityTimer = Timer(_keyboardInactivityDuration, () {
-      if (_showPasswordDialog && mounted) {
+      if (mounted) {
         _closeKeyboardDueToInactivity();
       }
     });
@@ -1232,32 +1257,36 @@ class _AppTabsControllerState extends State<AppTabsController> {
 
   // ✅ FECHA O TECLADO POR INATIVIDADE
   void _closeKeyboardDueToInactivity() {
-    setState(() {
-      _showPasswordDialog = false;
-      _enteredPassword = "";
-    });
+    // ✅ VERIFICA SE O DIALOG AINDA ESTÁ ABERTO
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop(); // ✅ FECHA O DIALOG
+      _passwordController.clear(); // ✅ LIMPA A SENHA
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Teclado fechado por inatividade'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Acesso às estatísticas cancelado por inatividade'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   // ✅ REINICIA O TIMER DO TECLADO A CADA INTERAÇÃO
   void _resetKeyboardTimer() {
+    _keyboardInactivityTimer?.cancel();
     _startKeyboardInactivityTimer();
   }
 
-  // ✅ VERIFICA A SENHA
+  // ✅ VERIFICA A SENHA (ATUALIZADO)
   void _checkPassword() {
-    _keyboardInactivityTimer?.cancel(); // ✅ CANCELA TIMER DO TECLADO
-    if (_enteredPassword == _statisticsPassword) {
+    _keyboardInactivityTimer?.cancel(); // ✅ CANCELA TIMER
+
+    final enteredPassword = _passwordController.text;
+
+    if (enteredPassword == _statisticsPassword) {
       // Senha correta - permite acesso às estatísticas
+      Navigator.of(context).pop(); // ✅ FECHA O DIALOG PRIMEIRO
       setState(() {
-        _showPasswordDialog = false;
-        _enteredPassword = "";
         _selectedIndex = 2; // Navega para estatísticas
       });
     } else {
@@ -1269,9 +1298,8 @@ class _AppTabsControllerState extends State<AppTabsController> {
           duration: Duration(seconds: 2),
         ),
       );
-      setState(() {
-        _enteredPassword = ""; // Limpa o campo
-      });
+      _passwordController.clear(); // ✅ LIMPA O CAMPO
+      _startKeyboardInactivityTimer(); // ✅ REINICIA TIMER APÓS ERRO
     }
   }
 
@@ -1282,34 +1310,6 @@ class _AppTabsControllerState extends State<AppTabsController> {
       _showPasswordDialog = false;
       _enteredPassword = "";
     });
-  }
-
-  // ✅ ADICIONA DÍGITO À SENHA
-  void _addDigit(String digit) {
-    _resetKeyboardTimer(); // ✅ REINICIA TIMER DO TECLADO
-    if (_enteredPassword.length < 4) {
-      setState(() {
-        _enteredPassword += digit;
-      });
-
-      // Verifica automaticamente quando completar 4 dígitos
-      if (_enteredPassword.length == 4) {
-        _checkPassword();
-      }
-    }
-  }
-
-  // ✅ REMOVE O ÚLTIMO DÍGITO
-  void _removeDigit() {
-    _resetKeyboardTimer(); // ✅ REINICIA TIMER DO TECLADO
-    if (_enteredPassword.isNotEmpty) {
-      setState(() {
-        _enteredPassword = _enteredPassword.substring(
-          0,
-          _enteredPassword.length - 1,
-        );
-      });
-    }
   }
 
   // 2. MUDANÇA: Novo comportamento ao tocar nos itens da barra
@@ -1369,171 +1369,85 @@ class _AppTabsControllerState extends State<AppTabsController> {
     });
   }
 
-  // ✅ CONSTRÓI O DIALOG DE SENHA
+  // ✅ DIALOG SIMPLES COM TECLADO NATIVO
   Widget _buildPasswordDialog() {
-    return GestureDetector(
-      onTap: _resetKeyboardTimer, // ✅ DETECTA TOQUES NO DIALOG
-      behavior: HitTestBehavior.translucent,
-      child: Container(
-        color: Colors.black54,
-        child: Center(
-          child: GestureDetector(
-            onTap: _resetKeyboardTimer, // ✅ DETECTA TOQUES NO CARD
-            child: Container(
-              width: 300,
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Senha de Acesso',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Color.fromARGB(255, 111, 136, 63),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Digite a senha para acessar as estatísticas:',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 16),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ✅ INDICADOR DE DÍGITOS
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(4, (index) {
-                      return GestureDetector(
-                        onTap:
-                            _resetKeyboardTimer, // ✅ DETECTA TOQUES NOS INDICADORES
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          margin: const EdgeInsets.symmetric(horizontal: 8),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey),
-                            borderRadius: BorderRadius.circular(8),
-                            color: index < _enteredPassword.length
-                                ? const Color.fromARGB(255, 0, 0, 0)
-                                : Colors.transparent,
-                          ),
-                          child: Center(
-                            child: Text(
-                              index < _enteredPassword.length ? '•' : '',
-                              style: const TextStyle(
-                                fontSize: 20,
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }),
-                  ),
-                  const SizedBox(height: 30),
-
-                  // ✅ TECLADO NUMÉRICO
-                  GridView.count(
-                    shrinkWrap: true,
-                    crossAxisCount: 3,
-                    mainAxisSpacing: 10,
-                    crossAxisSpacing: 10,
-                    children: [
-                      for (int i = 1; i <= 9; i++)
-                        _buildNumberButton(i.toString()),
-                      _buildEmptyButton(),
-                      _buildNumberButton('0'),
-                      _buildBackspaceButton(),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // ✅ BOTÕES DE AÇÃO
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: _cancelPassword,
-                          child: const Text('Cancelar'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: _enteredPassword.isNotEmpty
-                              ? _checkPassword
-                              : null,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color.fromARGB(
-                              255,
-                              111,
-                              136,
-                              63,
-                            ),
-                          ),
-                          child: const Text(
-                            'Verificar',
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+    return StatefulBuilder(
+      builder: (context, setDialogState) {
+        return GestureDetector(
+          onTap: () {
+            _resetKeyboardTimer(); // ✅ REINICIA TIMER AO TOCAR NO DIALOG
+          },
+          child: AlertDialog(
+            title: const Text(
+              'Senha de Acesso',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Color.fromARGB(255, 111, 136, 63),
               ),
             ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Digite a senha para acessar as estatísticas:',
+                  style: TextStyle(fontSize: 16),
+                ),
+                const SizedBox(height: 20),
+
+                // ✅ CAMPO DE TEXTO COM TECLADO NUMÉRICO NATIVO
+                GestureDetector(
+                  onTap:
+                      _resetKeyboardTimer, // ✅ REINICIA TIMER AO TOCAR NO CAMPO
+                  child: TextFormField(
+                    controller: _passwordController,
+                    onChanged: (value) {
+                      _resetKeyboardTimer(); // ✅ REINICIA TIMER A CADA DIGITAÇÃO
+                      setDialogState(() {});
+                    },
+                    onTap:
+                        _resetKeyboardTimer, // ✅ REINICIA TIMER AO FOCAR NO CAMPO
+                    obscureText: true,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 18, letterSpacing: 10),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(4),
+                    ],
+                    autofocus: true,
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+            ),
+            actions: [
+              // ✅ BOTÃO CANCELAR
+              TextButton(
+                onPressed: () {
+                  _keyboardInactivityTimer?.cancel();
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Cancelar'),
+              ),
+
+              // ✅ BOTÃO VERIFICAR
+              ElevatedButton(
+                onPressed: _passwordController.text.length == 4
+                    ? _checkPassword
+                    : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color.fromARGB(255, 111, 136, 63),
+                ),
+                child: const Text(
+                  'Verificar',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
           ),
-        ),
-      ),
-    );
-  }
-
-  // ✅ BOTÃO NUMÉRICO
-  Widget _buildNumberButton(String number) {
-    return ElevatedButton(
-      onPressed: () {
-        _resetKeyboardTimer(); // ✅ REINICIA TIMER AO CLICAR
-        _addDigit(number);
+        );
       },
-      style: ElevatedButton.styleFrom(
-        backgroundColor: const Color.fromARGB(255, 255, 255, 255),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-      child: Text(
-        number,
-        style: const TextStyle(
-          fontSize: 18,
-          color: Color.fromARGB(255, 0, 0, 0),
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
-
-  // ✅ BOTÃO VAZIO (para alinhamento)
-  Widget _buildEmptyButton() {
-    return const SizedBox.shrink();
-  }
-
-  // ✅ BOTÃO DE APAGAR
-  Widget _buildBackspaceButton() {
-    return ElevatedButton(
-      onPressed: () {
-        _resetKeyboardTimer(); // ✅ REINICIA TIMER AO CLICAR
-        _removeDigit();
-      },
-      style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.red,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-      child: const Icon(Icons.backspace, color: Colors.white),
     );
   }
 
@@ -2183,6 +2097,15 @@ class _StatisticsScreenState extends State<StatisticsScreen>
   // ✅ ADICIONE: Estado para controlar o tipo de gráfico
   String _selectedView = 'Total'; // 'Total', 'Média', 'MaisAvaliado'
 
+  // ✅ LEGENDAS NA ORDEM CORRETA: Excelente → Péssimo
+  static List<String> _sentimentLabels = [
+    'Excelente', // Índice 0 - 5 estrelas
+    'Bom', // Índice 1 - 4 estrelas
+    'Neutro', // Índice 2 - 3 estrelas
+    'Ruim', // Índice 3 - 2 estrelas
+    'Péssimo', // Índice 4 - 1 estrela
+  ];
+
   OverlayEntry? _exportOverlayEntry;
 
   @override
@@ -2253,16 +2176,16 @@ class _StatisticsScreenState extends State<StatisticsScreen>
   // ✅ MÉTODO PARA CONVERTER NÚMERO PARA NOME DA CATEGORIA
   String getCategoryName(int stars) {
     switch (stars) {
-      case 1:
-        return 'Péssimo';
-      case 2:
-        return 'Ruim';
-      case 3:
-        return 'Neutro';
+      case 5:
+        return 'Excelente'; // ✅ AGORA NO TOPO
       case 4:
         return 'Bom';
-      case 5:
-        return 'Excelente';
+      case 3:
+        return 'Neutro';
+      case 2:
+        return 'Ruim';
+      case 1:
+        return 'Péssimo'; // ✅ AGORA NA BASE
       default:
         return '$stars estrelas';
     }
@@ -2714,14 +2637,6 @@ class _StatisticsScreenState extends State<StatisticsScreen>
         .toList();
   }
 
-  static List<String> _sentimentLabels = [
-    'Péssimo',
-    'Ruim',
-    'Neutro',
-    'Bom',
-    'Excelente',
-  ];
-
   Widget _buildStarLegend(
     AppData appData,
     Map<int, int> starRatings,
@@ -2733,29 +2648,36 @@ class _StatisticsScreenState extends State<StatisticsScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
-        children: starRatings.entries.map((entry) {
-          final int star = entry.key;
-          final int count = entry.value;
-          final double percentage = total > 0 ? (count / total) * 100 : 0;
+        children: starRatings.entries
+            .toList()
+            .reversed // ✅ INVERTE A ORDEM: 5,4,3,2,1
+            .map((entry) {
+              final int star = entry.key;
+              final int count = entry.value;
+              final double percentage = total > 0 ? (count / total) * 100 : 0;
 
-          final String label = _sentimentLabels[star - 1];
+              final String label = _sentimentLabels[star - 1];
 
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4.0),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 20,
-                  height: 20,
-                  color: appData.pieColors[star - 1],
-                  margin: const EdgeInsets.only(right: 20),
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4.0),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 20,
+                      height: 20,
+                      color: appData.pieColors[star - 1],
+                      margin: const EdgeInsets.only(right: 20),
+                    ),
+                    Text(
+                      '$label: ${count}',
+                      style: const TextStyle(fontSize: 20),
+                    ),
+                  ],
                 ),
-                Text('$label: ${count}', style: const TextStyle(fontSize: 20)),
-              ],
-            ),
-          );
-        }).toList(),
+              );
+            })
+            .toList(),
       ),
     );
   }
@@ -3225,17 +3147,20 @@ class _StatisticsScreenState extends State<StatisticsScreen>
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _buildLegendItem(Colors.red.shade700, 'Péssimo'),
-            _buildLegendItem(Colors.deepOrange, 'Ruim'),
-            _buildLegendItem(Colors.amber, 'Neutro'),
+            _buildLegendItem(
+              Colors.green.shade700,
+              'Excelente',
+            ), // ✅ 5 ESTRELAS
+            _buildLegendItem(Colors.lightGreen, 'Bom'), // ✅ 4 ESTRELAS
+            _buildLegendItem(Colors.amber, 'Neutro'), // ✅ 3 ESTRELAS
           ],
         ),
         const SizedBox(height: 8),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _buildLegendItem(Colors.lightGreen, 'Bom'),
-            _buildLegendItem(Colors.green.shade700, 'Excelente'),
+            _buildLegendItem(Colors.deepOrange, 'Ruim'), // ✅ 2 ESTRELAS
+            _buildLegendItem(Colors.red.shade700, 'Péssimo'), // ✅ 1 ESTRELA
           ],
         ),
       ],
@@ -3294,7 +3219,13 @@ class RatingSelectionScreen extends StatefulWidget {
 class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
   int _selectedStars = 0;
 
-  final List<String> _ratingEmojis = const ['😠', '😟', '😐', '🙂', '😍'];
+  // ✅ EMOJIS NA ORDEM CORRETA PARA A NOVA SEQUÊNCIA
+  final List<String> _ratingEmojis = const ['😍', '🙂', '😐', '😟', '😠'];
+  // 😍 = Excelente (5)
+  // 🙂 = Bom (4)
+  // 😐 = Neutro (3)
+  // 😟 = Ruim (2)
+  // 😠 = Péssimo (1)
 
   @override
   void initState() {
@@ -3389,18 +3320,22 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
 
                   SizedBox(height: screenHeight * 0.04),
 
-                  // ✅ EMOJIS RESPONSIVOS E CORRETAMENTE CENTRALIZADOS
+                  // ✅ EMOJIS NA ORDEM INVERTIDA: EXCELENTE (5) → PÉSSIMO (1)
                   ...List.generate(5, (index) {
-                    final int starValue = index + 1;
-                    final String currentEmoji = _ratingEmojis[index];
+                    // ✅ INVERTE A ORDEM: 5,4,3,2,1 em vez de 1,2,3,4,5
+                    final int starValue =
+                        5 -
+                        index; // Excelente=5, Bom=4, Neutro=3, Ruim=2, Péssimo=1
+                    final String currentEmoji =
+                        _ratingEmojis[index]; // ✅ USA O ÍNDICE DIRETO
                     final bool isSelected = starValue == _selectedStars;
 
                     final List<String> legendas = [
-                      'Péssimo',
-                      'Ruim',
-                      'Neutro',
-                      'Bom',
-                      'Excelente',
+                      'Excelente', // ✅ AGORA NA POSIÇÃO 0 (primeiro)
+                      'Bom', // ✅ POSIÇÃO 1
+                      'Neutro', // ✅ POSIÇÃO 2
+                      'Ruim', // ✅ POSIÇÃO 3
+                      'Péssimo', // ✅ POSIÇÃO 4 (último)
                     ];
                     final String legendaAtual = legendas[index];
 
