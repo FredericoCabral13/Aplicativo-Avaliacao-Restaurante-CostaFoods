@@ -10,13 +10,13 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:csv/csv.dart';
 
-import 'splash_screen.dart';
-
 import 'package:share_plus/share_plus.dart';
 
 import 'package:url_launcher/url_launcher.dart';
 
-import 'package:flutter/services.dart'; // ✅ PARA FilteringTextInputFormatter
+import 'package:flutter/services.dart'; // PARA FilteringTextInputFormatter
+
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Definido uma ÚNICA vez no topo do arquivo (Correção do Erro de Duplicação)
 typedef PhraseSelectedCallback = void Function(String phrase);
@@ -32,6 +32,18 @@ void main() {
 class AppData extends ChangeNotifier {
   static const String _kFileName = 'avaliacoes_registros.csv';
 
+  // ✅ LISTA DE UNIDADES DA EMPRESA
+  final List<String> companyUnits = [
+    'Matriz',
+    'Unidade 2',
+    'Unidade 3',
+    'Unidade 4',
+    'Unidade 5',
+  ];
+
+  String? _selectedUnit; // Unidade selecionada
+  bool _showUnitSelection = false; // Controla se mostra o pop-up
+
   // NOVIDADE: Lista para armazenar CADA avaliação como um registro de mapa
   List<Map<String, dynamic>> allEvaluationRecords = [];
 
@@ -42,7 +54,7 @@ class AppData extends ChangeNotifier {
   };
   Map<int, Map<String, int>> shiftDetailedRatings = {1: {}, 2: {}};
 
-  // ✅ CORREÇÃO: Variável de Sentimento definida no topo (acessível por todos os métodos)
+  // CORREÇÃO: Variável de Sentimento definida no topo (acessível por todos os métodos)
   final Map<String, bool> _sentimentMap = const {
     'Bem Temperada': true,
     'Comida quente': true,
@@ -74,7 +86,57 @@ class AppData extends ChangeNotifier {
 
   // Construtor: Chama o método de carregamento ao inicializar
   AppData() {
-    Future.microtask(() => loadDataFromCSV());
+    Future.microtask(() => _initializeApp());
+  }
+
+  // ✅ INICIALIZAÇÃO DO APP
+  Future<void> _initializeApp() async {
+    await loadDataFromCSV();
+    await _checkFirstTimeOpen();
+  }
+
+  // ✅ VERIFICA SE É A PRIMEIRA VEZ QUE ABRE O APP
+  Future<void> _checkFirstTimeOpen() async {
+    final prefs = await SharedPreferences.getInstance();
+    final bool isFirstTime = prefs.getBool('is_first_time') ?? true;
+
+    if (isFirstTime) {
+      // É a primeira vez - mostra seletor de unidade
+      _showUnitSelection = true;
+      notifyListeners();
+
+      // Marca que não é mais a primeira vez
+      await prefs.setBool('is_first_time', false);
+    } else {
+      // Não é a primeira vez - carrega unidade salva
+      _selectedUnit = prefs.getString('selected_unit');
+      _showUnitSelection = false;
+    }
+  }
+
+  // ✅ SELECIONA UMA UNIDADE
+  Future<void> selectUnit(String unit) async {
+    _selectedUnit = unit;
+    _showUnitSelection = false;
+
+    // Salva a unidade selecionada
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('selected_unit', unit);
+
+    notifyListeners();
+  }
+
+  // ✅ GETTERS PARA ACESSAR OS DADOS
+  String? get selectedUnit => _selectedUnit;
+  bool get showUnitSelection => _showUnitSelection;
+
+  // ✅ MÉTODO PARA ALTERAR A UNIDADE (se necessário)
+  Future<void> changeUnit() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('is_first_time', true); // Reseta para mostrar seletor
+    _showUnitSelection = true;
+    _selectedUnit = null;
+    notifyListeners();
   }
 
   // ===============================================================
@@ -89,10 +151,15 @@ class AppData extends ChangeNotifier {
     required Set<String> negativeFeedbacks,
     String? comment,
   }) {
+    final String satisfacao = _getSatisfactionStatus(
+      star,
+    ); // ✅ CALCULA SATISFAÇÃO
+
     final newRecord = {
       'timestamp': DateTime.now().toIso8601String(),
       'turno': shift,
       'estrelas': star,
+      'satisfacao': satisfacao, // ✅ ADICIONA SATISFAÇÃO
       'positivos': positiveFeedbacks.join('; '),
       'negativos': negativeFeedbacks.join('; '),
       'comentario': comment ?? '',
@@ -101,12 +168,11 @@ class AppData extends ChangeNotifier {
     allEvaluationRecords.add(newRecord);
 
     _recalculateCounts();
-
     notifyListeners();
     saveDataToCSV();
   }
 
-  // ✅ CORRIGIDO: Método para classificar o feedback (usado no _sendRating)
+  // CORRIGIDO: Método para classificar o feedback (usado no _sendRating)
   bool isPositive(String phrase) {
     return _sentimentMap[phrase] ?? false;
   }
@@ -162,6 +228,7 @@ class AppData extends ChangeNotifier {
       'timestamp',
       'turno',
       'estrelas',
+      'satisfacao',
       'positivos_clicados',
       'negativos_clicados',
       'comentario',
@@ -169,10 +236,14 @@ class AppData extends ChangeNotifier {
 
     // Linhas de dados (Itera sobre a lista de registros)
     for (var record in allEvaluationRecords) {
+      final int stars = record['estrelas'] as int;
+      // ✅ CALCULA SATISFAÇÃO
+      final String satisfacao = _getSatisfactionStatus(stars);
       csvData.add([
         record['timestamp'],
         record['turno'],
         record['estrelas'],
+        satisfacao,
         record['positivos'],
         record['negativos'],
         record['comentario'],
@@ -197,16 +268,29 @@ class AppData extends ChangeNotifier {
     // Pula o cabeçalho (linha 0)
     for (int i = 1; i < csvData.length; i++) {
       final row = csvData[i];
-      if (row.length < 6) continue;
 
-      allEvaluationRecords.add({
-        'timestamp': row[0].toString(),
-        'turno': row[1] as int,
-        'estrelas': row[2] as int,
-        'positivos': row[3].toString(),
-        'negativos': row[4].toString(),
-        'comentario': row[5].toString(),
-      });
+      // ✅ COMPATIBILIDADE: Verifica se tem a coluna de satisfação
+      if (row.length >= 6) {
+        Map<String, dynamic> record = {
+          'timestamp': row[0].toString(),
+          'turno': row[1] as int,
+          'estrelas': row[2] as int,
+          'positivos': row[3].toString(),
+          'negativos': row[4].toString(),
+          'comentario': row[5].toString(),
+        };
+
+        // ✅ SE TEM A COLUNA DE SATISFAÇÃO (versões mais recentes)
+        if (row.length >= 7) {
+          record['satisfacao'] = row[6].toString();
+        } else {
+          // ✅ CALCULA SATISFAÇÃO PARA REGISTROS ANTIGOS
+          final int stars = row[2] as int;
+          record['satisfacao'] = _getSatisfactionStatus(stars);
+        }
+
+        allEvaluationRecords.add(record);
+      }
     }
 
     _recalculateCounts();
@@ -307,7 +391,7 @@ class AppData extends ChangeNotifier {
         recordDate.day,
       );
 
-      // ✅ MUDE: Inclui de sevenDaysAgo até yesterday (exclui hoje)
+      // MUDE: Inclui de sevenDaysAgo até yesterday (exclui hoje)
       return (recordDay.isAfter(
                 sevenDaysAgo.subtract(const Duration(days: 1)),
               ) &&
@@ -337,7 +421,7 @@ class AppData extends ChangeNotifier {
       dailyCounts[recordDay]![star] = (dailyCounts[recordDay]![star] ?? 0) + 1;
     }
 
-    // ✅ CORREÇÃO: Preencher dias faltantes de ONTEM até 7 dias atrás
+    // CORREÇÃO: Preencher dias faltantes de ONTEM até 7 dias atrás
     final now = DateTime.now();
     final yesterday = DateTime(
       now.year,
@@ -404,7 +488,7 @@ class AppData extends ChangeNotifier {
     return mostRated;
   }
 
-  // ✅ MÉTODO PARA CONVERTER NÚMERO PARA NOME DA CATEGORIA
+  // MÉTODO PARA CONVERTER NÚMERO PARA NOME DA CATEGORIA
   String getCategoryName(int stars) {
     switch (stars) {
       case 1:
@@ -422,17 +506,17 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  /// ✅ DIALOG DE SUCESSO COM OPÇÕES (CORRIGIDO)
+  /// DIALOG DE SUCESSO COM OPÇÕES (CORRIGIDO)
   Future<void> _showExportSuccessDialog(
     BuildContext context,
     String filePath,
   ) async {
-    // ✅ GARANTE QUE O CONTEXTO AINDA ESTÁ VÁLIDO
+    // GARANTE QUE O CONTEXTO AINDA ESTÁ VÁLIDO
     if (!context.mounted) return;
 
     final result = await showDialog<int>(
       context: context,
-      barrierDismissible: true, // ✅ PERMITE FECHAR CLICANDO FORA
+      barrierDismissible: true, // PERMITE FECHAR CLICANDO FORA
       builder: (context) => AlertDialog(
         title: const Text('Exportação Concluída!'),
         content: const Text(
@@ -470,7 +554,7 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  // ✅ MÉTODO ALTERNATivo - Salvar Diretamente na Pasta Downloads
+  // MÉTODO ALTERNATivo - Salvar Diretamente na Pasta Downloads
   Future<void> exportToDownloads(BuildContext context) async {
     try {
       final csvData = await _generateCSVContent();
@@ -498,24 +582,24 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  String? _lastSavedPath; // ✅ Guardar o último caminho salvo
+  String? _lastSavedPath; // Guardar o último caminho salvo
 
-  // ✅ MÉTODO PARA SALVAR EM PASTA VISÍVEL (CORRIGIDO)
+  // MÉTODO PARA SALVAR EM PASTA VISÍVEL (CORRIGIDO)
   Future<void> exportCSV(BuildContext context) async {
     try {
       final csvData = await _generateCSVContent();
 
-      // ✅ USA Navigator.push para garantir que o pop-up seja gerenciado corretamente
+      // USA Navigator.push para garantir que o pop-up seja gerenciado corretamente
       await showDialog<int>(
         context: context,
-        barrierDismissible: true, // ✅ PERMITE FECHAR CLICANDO FORA
+        barrierDismissible: true, // PERMITE FECHAR CLICANDO FORA
         builder: (context) => AlertDialog(
           title: const Text('Exportar Dados'),
           content: const Text('Escolha como deseja exportar o arquivo CSV:'),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.of(context).pop(1); // ✅ FECHA O DIALOG
+                Navigator.of(context).pop(1); // FECHA O DIALOG
                 _saveToDownloads(context, csvData);
               },
               child: const Row(
@@ -529,7 +613,7 @@ class AppData extends ChangeNotifier {
             ),
             TextButton(
               onPressed: () {
-                Navigator.of(context).pop(2); // ✅ FECHA O DIALOG
+                Navigator.of(context).pop(2); // FECHA O DIALOG
                 _shareFile(context, csvData);
               },
               child: const Row(
@@ -542,7 +626,7 @@ class AppData extends ChangeNotifier {
               ),
             ),
             TextButton(
-              onPressed: () => Navigator.of(context).pop(0), // ✅ FECHA O DIALOG
+              onPressed: () => Navigator.of(context).pop(0), // FECHA O DIALOG
               child: const Text('Cancelar'),
             ),
           ],
@@ -560,10 +644,10 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  // ✅ SALVAR DIRETO NO DISPOSITIVO
-  String? _lastSavedFilePath; // ✅ Guarda o último caminho salvo
+  // SALVAR DIRETO NO DISPOSITIVO
+  String? _lastSavedFilePath; // Guarda o último caminho salvo
 
-  // ✅ SALVAR NO DISPOSITIVO - MÉTODO CORRIGIDO
+  // SALVAR NO DISPOSITIVO - MÉTODO CORRIGIDO
   Future<void> _saveToDevice(BuildContext context, String csvData) async {
     try {
       // Usar diretório de documentos (funciona sem permissões especiais)
@@ -583,7 +667,7 @@ class AppData extends ChangeNotifier {
         );
       }
 
-      print('✅ Arquivo salvo em: ${file.path}'); // Para debug
+      print(' Arquivo salvo em: ${file.path}'); // Para debug
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -596,7 +680,7 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  // ✅ DIALOG DE SUCESSO COM BOTÃO "ABRIR PASTA"
+  // DIALOG DE SUCESSO COM BOTÃO "ABRIR PASTA"
   void _showSaveSuccessDialog(
     BuildContext context,
     String filePath,
@@ -607,7 +691,7 @@ class AppData extends ChangeNotifier {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('✅ Arquivo Salvo!'),
+        title: const Text('Arquivo Salvo!'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -646,7 +730,7 @@ class AppData extends ChangeNotifier {
     );
   }
 
-  // ✅ ABRIR GERENCIADOR DE ARQUIVOS
+  // ABRIR GERENCIADOR DE ARQUIVOS
   Future<void> _openFileManager(String path) async {
     try {
       if (Platform.isAndroid) {
@@ -669,7 +753,7 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  // ✅ FALLBACK PARA ABRIR GERENCIADOR
+  // FALLBACK PARA ABRIR GERENCIADOR
   Future<void> _openFileManagerFallback(String path) async {
     try {
       // Tenta abrir o diretório usando file://
@@ -686,13 +770,13 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  // ✅ MOSTRAR CAMINHO COMPLETO
+  // MOSTRAR CAMINHO COMPLETO
   void _showPathDialog(String path) {
     // Pode ser implementado se quiser mostrar um dialog com o caminho
     print('Caminho do arquivo: $path');
   }
 
-  // ✅ CONVERTER CAMINHO PARA FORMATO ANDROID
+  // CONVERTER CAMINHO PARA FORMATO ANDROID
   String _getAndroidStoragePath(String path) {
     // Converte caminho como /storage/emulated/0/Android/data/...
     // para formato que o gerenciador entenda
@@ -705,7 +789,7 @@ class AppData extends ChangeNotifier {
     return Uri.encodeComponent(path);
   }
 
-  // ✅ ENCURTAR CAMINHO PARA EXIBIÇÃO
+  // ENCURTAR CAMINHO PARA EXIBIÇÃO
   String _getShortPath(String path) {
     if (path.length > 50) {
       return '...${path.substring(path.length - 47)}';
@@ -713,7 +797,7 @@ class AppData extends ChangeNotifier {
     return path;
   }
 
-  // ✅ OBTER PASTA DOWNLOADS PÚBLICA (Android 10+)
+  // OBTER PASTA DOWNLOADS PÚBLICA (Android 10+)
   Future<String> _getPublicDownloadsPath() async {
     try {
       if (Platform.isAndroid) {
@@ -768,7 +852,7 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  // ✅ SALVAR NO DISPOSITIVO
+  // SALVAR NO DISPOSITIVO
   Future<void> _saveToDownloads(BuildContext context, String csvData) async {
     try {
       // Tentar acessar o storage externo (Downloads)
@@ -797,7 +881,7 @@ class AppData extends ChangeNotifier {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('✅ Arquivo salvo na pasta Downloads!'),
+            content: const Text('Arquivo salvo na pasta Downloads!'),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 3),
             action: SnackBarAction(
@@ -809,7 +893,7 @@ class AppData extends ChangeNotifier {
         );
       }
 
-      print('✅ Arquivo salvo em: ${file.path}');
+      print('✔️ Arquivo salvo em: ${file.path}');
     } catch (e) {
       // Fallback: salvar em documentos e compartilhar
       if (context.mounted) {
@@ -826,7 +910,7 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  // ✅ SALVAR NA PASTA DE DOCUMENTOS (fallback)
+  // SALVAR NA PASTA DE DOCUMENTOS (fallback)
   Future<void> _saveToDocuments(BuildContext context, String csvData) async {
     try {
       final documentsDir = await getApplicationDocumentsDirectory();
@@ -850,13 +934,13 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  // ✅ DATA FORMATADA PARA O NOME DO ARQUIVO
+  // DATA FORMATADA PARA O NOME DO ARQUIVO
   String _getFormattedDate() {
     final now = DateTime.now();
     return '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
   }
 
-  // ✅ ABRIR ARQUIVO - MÉTODO FUNCIONAL
+  // ABRIR ARQUIVO - MÉTODO FUNCIONAL
   Future<void> _openFile(BuildContext context, String filePath) async {
     try {
       final file = File(filePath);
@@ -871,7 +955,7 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  // ✅ COMPARTILHAR ARQUIVO (mantém igual)
+  // COMPARTILHAR ARQUIVO (mantém igual)
   Future<void> _shareFile(BuildContext context, String csvData) async {
     try {
       final directory = await getTemporaryDirectory();
@@ -893,7 +977,7 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  // ✅ OBTER PASTA DOWNLOADS
+  // OBTER PASTA DOWNLOADS
   Future<String> _getDownloadsPath() async {
     try {
       if (Platform.isAndroid) {
@@ -920,7 +1004,7 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  // ✅ ABRIR PASTA - MÉTODO FUNCIONAL
+  // ABRIR PASTA - MÉTODO FUNCIONAL
   Future<void> _openFolder(BuildContext context, String filePath) async {
     try {
       final directory = File(filePath).parent;
@@ -973,29 +1057,38 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  // ✅ GERAR CONTEÚDO CSV (mantém igual)
+  // GERAR CONTEÚDO CSV (mantém igual)
   Future<String> _generateCSVContent() async {
     final List<List<dynamic>> csvData = [];
 
     csvData.add([
+      'Unidade',
       'Data/Hora',
       'Turno',
       'Avaliação',
       'Categoria',
+      'Status de Satisfação', // ✅ NOVA COLUNA
       'Feedbacks Positivos',
       'Feedbacks Negativos',
       'Comentário',
     ]);
 
     for (var record in allEvaluationRecords) {
-      final category = getCategoryName(record['estrelas'] as int);
+      final int stars = record['estrelas'] as int;
+      final category = getCategoryName(stars);
       final turno = record['turno'] == 1 ? 'Manhã/Tarde' : 'Noite/Madrugada';
 
+      // ✅ USA O STATUS JÁ SALVO OU CALCULA NOVO
+      final String satisfactionStatus =
+          record['satisfacao']?.toString() ?? _getSatisfactionStatus(stars);
+
       csvData.add([
+        _selectedUnit ?? 'Não definida',
         record['timestamp'],
         turno,
         '${record['estrelas']} estrelas ($category)',
         category,
+        satisfactionStatus,
         record['positivos'],
         record['negativos'],
         record['comentario'] ?? '',
@@ -1003,6 +1096,21 @@ class AppData extends ChangeNotifier {
     }
 
     return const ListToCsvConverter().convert(csvData);
+  }
+
+  // ✅ MÉTODO PARA DETERMINAR STATUS DE SATISFAÇÃO
+  String _getSatisfactionStatus(int stars) {
+    switch (stars) {
+      case 5: // Excelente
+      case 4: // Bom
+        return 'Satisfeito';
+      case 2: // Ruim
+      case 1: // Péssimo
+        return 'Insatisfeito';
+      case 3: // Neutro
+      default:
+        return ''; // Vazio para neutro
+    }
   }
 
   String _getFriendlyPath(String path) {
@@ -1021,7 +1129,7 @@ class AppData extends ChangeNotifier {
     );
   }
 
-  // ✅ DIALOG DE SUCESSO COM AÇÕES FUNCIONAIS
+  // DIALOG DE SUCESSO COM AÇÕES FUNCIONAIS
   Future<void> _showSuccessDialog(
     BuildContext context,
     String filePath,
@@ -1105,12 +1213,13 @@ class MyApp extends StatelessWidget {
         title: 'Sistema de Avaliação',
         theme: ThemeData(
           primarySwatch: Colors.red,
-          useMaterial3: true, // ✅ Design mais moderno e adaptável
+          useMaterial3: true, // Design mais moderno e adaptável
         ),
-        home: const AppTabsController(),
+        home:
+            const AppWithUnitSelection(), // ✅ NOVO: Widget que gerencia o pop-up
         debugShowCheckedModeBanner: false,
         builder: (context, child) {
-          // ✅ Força escala de texto responsiva
+          // Força escala de texto responsiva
           return MediaQuery(
             data: MediaQuery.of(context).copyWith(
               textScaleFactor: MediaQuery.of(
@@ -1120,6 +1229,124 @@ class MyApp extends StatelessWidget {
             child: child!,
           );
         },
+      ),
+    );
+  }
+}
+
+// ✅ NOVO WIDGET QUE GERENCIA O POP-UP DE UNIDADE
+class AppWithUnitSelection extends StatelessWidget {
+  const AppWithUnitSelection({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<AppData>(
+      builder: (context, appData, child) {
+        // ✅ SE PRECISA MOSTRAR A SELEÇÃO DE UNIDADE, MOSTRA O POP-UP
+        if (appData.showUnitSelection) {
+          return _buildUnitSelectionDialog(context, appData);
+        }
+
+        // ✅ SE JÁ TEM UNIDADE SELECIONADA, MOSTRA O APP NORMAL
+        return const AppTabsController();
+      },
+    );
+  }
+
+  // ✅ CONSTRÓI O DIALOG DE SELEÇÃO DE UNIDADE
+  Widget _buildUnitSelectionDialog(BuildContext context, AppData appData) {
+    return Scaffold(
+      backgroundColor: Colors.black54,
+      body: Center(
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.9,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ✅ ÍCONE E TÍTULO
+              Icon(
+                Icons.business_rounded,
+                size: 64,
+                color: const Color.fromARGB(255, 111, 136, 63),
+              ),
+              const SizedBox(height: 16),
+
+              Text(
+                'Bem-vindo ao Costa Foods Feedbacks!',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: const Color.fromARGB(255, 111, 136, 63),
+                ),
+                textAlign: TextAlign.center,
+              ),
+
+              const SizedBox(height: 8),
+
+              Text(
+                'Selecione a unidade onde serão feitas as avaliações:',
+                style: TextStyle(fontSize: 16, color: Colors.grey[700]),
+                textAlign: TextAlign.center,
+              ),
+
+              const SizedBox(height: 24),
+
+              // ✅ LISTA DE UNIDADES
+              ...appData.companyUnits.map((unit) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: ElevatedButton(
+                    onPressed: () => appData.selectUnit(unit),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color.fromARGB(255, 111, 136, 63),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 16,
+                        horizontal: 20,
+                      ),
+                      minimumSize: const Size(double.infinity, 50),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Text(
+                      unit,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+
+              const SizedBox(height: 16),
+
+              // ✅ INFORMAÇÃO
+              Text(
+                'Esta seleção será salva e usada em todas as avaliações.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                  fontStyle: FontStyle.italic,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1139,19 +1366,19 @@ class _AppTabsControllerState extends State<AppTabsController> {
   int? _selectedRatingFromHome;
   int? _initialTabIndex;
 
-  // ✅ SENHA PARA ACESSAR ESTATÍSTICAS
+  // SENHA PARA ACESSAR ESTATÍSTICAS
   final String _statisticsPassword = "1234"; // Senha definida no código
   bool _showPasswordDialog = false;
   String _enteredPassword = "";
 
-  // ✅ CONTROLLER PERMANENTE PARA O CAMPO DE SENHA
+  // CONTROLLER PERMANENTE PARA O CAMPO DE SENHA
   final TextEditingController _passwordController = TextEditingController();
 
-  // ✅ Timer para voltar à tela inicial após inatividade
+  // Timer para voltar à tela inicial após inatividade
   Timer? _inactivityTimer;
   final Duration _inactivityDuration = const Duration(seconds: 20);
 
-  // ✅ TIMER ESPECÍFICO PARA O TECLADO NUMÉRICO
+  // TIMER ESPECÍFICO PARA O TECLADO NUMÉRICO
   Timer? _keyboardInactivityTimer;
   final Duration _keyboardInactivityDuration = const Duration(seconds: 5);
 
@@ -1172,39 +1399,39 @@ class _AppTabsControllerState extends State<AppTabsController> {
     super.initState();
     // Inicializa o turno com o valor padrão
     _currentShift = _calculateDefaultShift();
-    _startInactivityTimer(); // ✅ INICIA O TIMER
+    _startInactivityTimer(); // INICIA O TIMER
   }
 
   @override
   void dispose() {
     _inactivityTimer?.cancel();
     _keyboardInactivityTimer?.cancel();
-    _passwordController.dispose(); // ✅ DISPOSE DO CONTROLLER
+    _passwordController.dispose(); // DISPOSE DO CONTROLLER
     super.dispose();
   }
 
-  // ✅ INICIA O TIMER DE INATIVIDADE
+  // INICIA O TIMER DE INATIVIDADE
   void _startInactivityTimer() {
     _inactivityTimer?.cancel();
     _inactivityTimer = Timer(_inactivityDuration, () {
-      // ✅ VOLTA PARA TELA INICIAL MESMO COM DIALOG ABERTO
+      // VOLTA PARA TELA INICIAL MESMO COM DIALOG ABERTO
       if ((_selectedIndex != 0 || _showPasswordDialog) && mounted) {
         _resetToHomeScreen();
       }
     });
   }
 
-  // ✅ VOLTA PARA TELA INICIAL (COM FECHAMENTO DE DIALOGS)
+  // VOLTA PARA TELA INICIAL (COM FECHAMENTO DE DIALOGS)
   void _resetToHomeScreen() {
-    // ✅ FECHA TODOS OS DIALOGS E POP-UPS PRIMEIRO
+    // FECHA TODOS OS DIALOGS E POP-UPS PRIMEIRO
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).popUntil((route) => route.isFirst);
     }
 
-    // ✅ CANCELA TIMERS
+    // CANCELA TIMERS
     _keyboardInactivityTimer?.cancel();
 
-    // ✅ LIMPA CONTROLLER DE SENHA
+    // LIMPA CONTROLLER DE SENHA
     _passwordController.clear();
 
     ScaffoldMessenger.of(context).clearSnackBars();
@@ -1224,28 +1451,28 @@ class _AppTabsControllerState extends State<AppTabsController> {
     );
   }
 
-  // ✅ REINICIA O TIMER A CADA INTERAÇÃO
+  // REINICIA O TIMER A CADA INTERAÇÃO
   void _resetTimerOnInteraction() {
     _startInactivityTimer();
   }
 
-  // ✅ MOSTRA O DIALOG DE SENHA COM TECLADO NATIVO
+  // MOSTRA O DIALOG DE SENHA COM TECLADO NATIVO
   void _showPasswordInput() {
-    _passwordController.clear(); // ✅ LIMPA O CAMPO
+    _passwordController.clear(); // LIMPA O CAMPO
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => _buildPasswordDialog(),
     ).then((_) {
-      _keyboardInactivityTimer?.cancel(); // ✅ CANCELA TIMER AO FECHAR
+      _keyboardInactivityTimer?.cancel(); // CANCELA TIMER AO FECHAR
     });
 
-    // ✅ INICIA O TIMER APÓS ABRIR O DIALOG
+    // INICIA O TIMER APÓS ABRIR O DIALOG
     _startKeyboardInactivityTimer();
   }
 
-  // ✅ INICIA O TIMER DE INATIVIDADE DO TECLADO
+  // INICIA O TIMER DE INATIVIDADE DO TECLADO
   void _startKeyboardInactivityTimer() {
     _keyboardInactivityTimer?.cancel();
     _keyboardInactivityTimer = Timer(_keyboardInactivityDuration, () {
@@ -1255,12 +1482,12 @@ class _AppTabsControllerState extends State<AppTabsController> {
     });
   }
 
-  // ✅ FECHA O TECLADO POR INATIVIDADE
+  // FECHA O TECLADO POR INATIVIDADE
   void _closeKeyboardDueToInactivity() {
-    // ✅ VERIFICA SE O DIALOG AINDA ESTÁ ABERTO
+    // VERIFICA SE O DIALOG AINDA ESTÁ ABERTO
     if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop(); // ✅ FECHA O DIALOG
-      _passwordController.clear(); // ✅ LIMPA A SENHA
+      Navigator.of(context).pop(); // FECHA O DIALOG
+      _passwordController.clear(); // LIMPA A SENHA
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1271,21 +1498,21 @@ class _AppTabsControllerState extends State<AppTabsController> {
     }
   }
 
-  // ✅ REINICIA O TIMER DO TECLADO A CADA INTERAÇÃO
+  // REINICIA O TIMER DO TECLADO A CADA INTERAÇÃO
   void _resetKeyboardTimer() {
     _keyboardInactivityTimer?.cancel();
     _startKeyboardInactivityTimer();
   }
 
-  // ✅ VERIFICA A SENHA (ATUALIZADO)
+  // VERIFICA A SENHA (ATUALIZADO)
   void _checkPassword() {
-    _keyboardInactivityTimer?.cancel(); // ✅ CANCELA TIMER
+    _keyboardInactivityTimer?.cancel(); // CANCELA TIMER
 
     final enteredPassword = _passwordController.text;
 
     if (enteredPassword == _statisticsPassword) {
       // Senha correta - permite acesso às estatísticas
-      Navigator.of(context).pop(); // ✅ FECHA O DIALOG PRIMEIRO
+      Navigator.of(context).pop(); // FECHA O DIALOG PRIMEIRO
       setState(() {
         _selectedIndex = 2; // Navega para estatísticas
       });
@@ -1298,14 +1525,14 @@ class _AppTabsControllerState extends State<AppTabsController> {
           duration: Duration(seconds: 2),
         ),
       );
-      _passwordController.clear(); // ✅ LIMPA O CAMPO
-      _startKeyboardInactivityTimer(); // ✅ REINICIA TIMER APÓS ERRO
+      _passwordController.clear(); // LIMPA O CAMPO
+      _startKeyboardInactivityTimer(); // REINICIA TIMER APÓS ERRO
     }
   }
 
-  // ✅ CANCELA O DIGITAR DA SENHA
+  // CANCELA O DIGITAR DA SENHA
   void _cancelPassword() {
-    _keyboardInactivityTimer?.cancel(); // ✅ CANCELA TIMER DO TECLADO
+    _keyboardInactivityTimer?.cancel(); // CANCELA TIMER DO TECLADO
     setState(() {
       _showPasswordDialog = false;
       _enteredPassword = "";
@@ -1314,9 +1541,9 @@ class _AppTabsControllerState extends State<AppTabsController> {
 
   // 2. MUDANÇA: Novo comportamento ao tocar nos itens da barra
   void _onItemTapped(int index) {
-    _resetTimerOnInteraction(); // ✅ REINICIA TIMER
+    _resetTimerOnInteraction(); // REINICIA TIMER
     // Se o usuário está voltando para a tela de Avaliação (índice 0)
-    // ✅ VERIFICA SE É A ABA DE ESTATÍSTICAS (índice 2)
+    // VERIFICA SE É A ABA DE ESTATÍSTICAS (índice 2)
     if (index == 2) {
       _showPasswordInput();
       return; // Impede a navegação imediata
@@ -1344,14 +1571,14 @@ class _AppTabsControllerState extends State<AppTabsController> {
 
   // Função chamada pelo menu para trocar o turno (permanece inalterada)
   void _selectShift(int shift) {
-    _resetTimerOnInteraction(); // ✅ REINICIA TIMER
+    _resetTimerOnInteraction(); // REINICIA TIMER
     setState(() {
       _currentShift = shift;
     });
   }
 
   void _navigateToFeedbackScreen(int rating, int tabIndex) {
-    // ✅ ADICIONE uma animação suave:
+    // ADICIONE uma animação suave:
     Future.delayed(Duration.zero, () {
       setState(() {
         _selectedRatingFromHome = rating;
@@ -1369,13 +1596,13 @@ class _AppTabsControllerState extends State<AppTabsController> {
     });
   }
 
-  // ✅ DIALOG SIMPLES COM TECLADO NATIVO
+  // DIALOG SIMPLES COM TECLADO NATIVO
   Widget _buildPasswordDialog() {
     return StatefulBuilder(
       builder: (context, setDialogState) {
         return GestureDetector(
           onTap: () {
-            _resetKeyboardTimer(); // ✅ REINICIA TIMER AO TOCAR NO DIALOG
+            _resetKeyboardTimer(); // REINICIA TIMER AO TOCAR NO DIALOG
           },
           child: AlertDialog(
             title: const Text(
@@ -1395,18 +1622,18 @@ class _AppTabsControllerState extends State<AppTabsController> {
                 ),
                 const SizedBox(height: 20),
 
-                // ✅ CAMPO DE TEXTO COM TECLADO NUMÉRICO NATIVO
+                // CAMPO DE TEXTO COM TECLADO NUMÉRICO NATIVO
                 GestureDetector(
                   onTap:
-                      _resetKeyboardTimer, // ✅ REINICIA TIMER AO TOCAR NO CAMPO
+                      _resetKeyboardTimer, // REINICIA TIMER AO TOCAR NO CAMPO
                   child: TextFormField(
                     controller: _passwordController,
                     onChanged: (value) {
-                      _resetKeyboardTimer(); // ✅ REINICIA TIMER A CADA DIGITAÇÃO
+                      _resetKeyboardTimer(); // REINICIA TIMER A CADA DIGITAÇÃO
                       setDialogState(() {});
                     },
                     onTap:
-                        _resetKeyboardTimer, // ✅ REINICIA TIMER AO FOCAR NO CAMPO
+                        _resetKeyboardTimer, // REINICIA TIMER AO FOCAR NO CAMPO
                     obscureText: true,
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 18, letterSpacing: 10),
@@ -1422,7 +1649,7 @@ class _AppTabsControllerState extends State<AppTabsController> {
               ],
             ),
             actions: [
-              // ✅ BOTÃO CANCELAR
+              // BOTÃO CANCELAR
               TextButton(
                 onPressed: () {
                   _keyboardInactivityTimer?.cancel();
@@ -1431,7 +1658,7 @@ class _AppTabsControllerState extends State<AppTabsController> {
                 child: const Text('Cancelar'),
               ),
 
-              // ✅ BOTÃO VERIFICAR
+              // BOTÃO VERIFICAR
               ElevatedButton(
                 onPressed: _passwordController.text.length == 4
                     ? _checkPassword
@@ -1480,97 +1707,120 @@ class _AppTabsControllerState extends State<AppTabsController> {
       ),
     ];
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          _selectedIndex == 0
-              ? 'Avaliação do Restaurante (Turno $_currentShift)'
-              : 'Estatísticas das Avaliações (Turno $_currentShift)',
-          style: const TextStyle(
-            fontSize: 24.0,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        backgroundColor: Color.fromARGB(255, 111, 136, 63),
-        elevation: 4,
-        actions: _selectedIndex == 1
-            ? [
-                IconButton(
-                  icon: const Icon(
-                    Icons.access_time_filled,
+    return Consumer<AppData>(
+      // ✅ ADICIONE ESTE CONSUMER
+      builder: (context, appData, child) {
+        return Scaffold(
+          appBar: AppBar(
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ✅ TÍTULO PRINCIPAL
+                Text(
+                  _selectedIndex == 0
+                      ? 'Avaliação do Restaurante (Turno $_currentShift)'
+                      : 'Estatísticas das Avaliações (Turno $_currentShift)',
+                  style: const TextStyle(
+                    fontSize: 18.0, // ✅ REDUZIDO para caber melhor
+                    fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
-                  onPressed: () {
-                    _resetTimerOnInteraction();
-                    setState(() {
-                      _selectedIndex = 0;
-                    });
-                    _resetHomeScreen();
-                  },
                 ),
-              ]
-            : [
-                PopupMenuButton<int>(
-                  onSelected: _selectShift,
-                  itemBuilder: (BuildContext context) => <PopupMenuEntry<int>>[
-                    const PopupMenuItem<int>(
-                      value: 1,
-                      child: Text('Turno 1 (Manhã/Tarde)'),
+                // ✅ UNIDADE SELECIONADA (se existir)
+                if (appData.selectedUnit != null)
+                  Text(
+                    appData.selectedUnit!,
+                    style: const TextStyle(
+                      fontSize: 12.0,
+                      color: Colors.white70,
+                      fontWeight: FontWeight.normal,
                     ),
-                    const PopupMenuItem<int>(
-                      value: 2,
-                      child: Text('Turno 2 (Noite/Madrugada)'),
+                  ),
+              ],
+            ),
+            backgroundColor: Color.fromARGB(255, 111, 136, 63),
+            elevation: 4,
+            actions: _selectedIndex == 1
+                ? [
+                    IconButton(
+                      icon: const Icon(
+                        Icons.access_time_filled,
+                        color: Colors.white,
+                      ),
+                      onPressed: () {
+                        _resetTimerOnInteraction();
+                        setState(() {
+                          _selectedIndex = 0;
+                        });
+                        _resetHomeScreen();
+                      },
+                    ),
+                  ]
+                : [
+                    PopupMenuButton<int>(
+                      onSelected: _selectShift,
+                      itemBuilder: (BuildContext context) =>
+                          <PopupMenuEntry<int>>[
+                            const PopupMenuItem<int>(
+                              value: 1,
+                              child: Text('Turno 1 (Manhã/Tarde)'),
+                            ),
+                            const PopupMenuItem<int>(
+                              value: 2,
+                              child: Text('Turno 2 (Noite/Madrugada)'),
+                            ),
+                          ],
+                      icon: const Icon(
+                        Icons.access_time_filled,
+                        color: Colors.white,
+                      ),
                     ),
                   ],
-                  icon: const Icon(
-                    Icons.access_time_filled,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
-      ),
-      body: Stack(
-        children: [
-          // CONTEÚDO PRINCIPAL
-          GestureDetector(
+          ),
+          body: Stack(
+            children: [
+              // CONTEÚDO PRINCIPAL
+              GestureDetector(
+                onTap: _resetTimerOnInteraction,
+                behavior: HitTestBehavior.translucent,
+                child: Center(child: widgetOptions.elementAt(_selectedIndex)),
+              ),
+
+              // DIALOG DE SENHA (se necessário)
+              if (_showPasswordDialog) _buildPasswordDialog(),
+            ],
+          ),
+          bottomNavigationBar: GestureDetector(
             onTap: _resetTimerOnInteraction,
             behavior: HitTestBehavior.translucent,
-            child: Center(child: widgetOptions.elementAt(_selectedIndex)),
+            child: BottomNavigationBar(
+              items: const <BottomNavigationBarItem>[
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.insert_emoticon_rounded),
+                  label: 'Avaliações',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.task_alt_rounded),
+                  label: 'Feedbacks',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.bar_chart),
+                  label: 'Estatísticas',
+                ),
+              ],
+              selectedLabelStyle: const TextStyle(
+                fontSize: 16.0,
+                fontWeight: FontWeight.bold,
+              ),
+              unselectedLabelStyle: const TextStyle(fontSize: 14.0),
+              currentIndex: _selectedIndex,
+              selectedItemColor: Colors.green.shade700,
+              onTap: _onItemTapped,
+            ),
           ),
-
-          // ✅ DIALOG DE SENHA (se necessário)
-          if (_showPasswordDialog) _buildPasswordDialog(),
-        ],
-      ),
-      bottomNavigationBar: GestureDetector(
-        onTap: _resetTimerOnInteraction,
-        behavior: HitTestBehavior.translucent,
-        child: BottomNavigationBar(
-          items: const <BottomNavigationBarItem>[
-            BottomNavigationBarItem(
-              icon: Icon(Icons.insert_emoticon_rounded),
-              label: 'Avaliações',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.task_alt_rounded),
-              label: 'Feedbacks',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.bar_chart),
-              label: 'Estatísticas',
-            ),
-          ],
-          selectedLabelStyle: const TextStyle(
-            fontSize: 16.0,
-            fontWeight: FontWeight.bold,
-          ),
-          unselectedLabelStyle: const TextStyle(fontSize: 14.0),
-          currentIndex: _selectedIndex,
-          selectedItemColor: Colors.green.shade700,
-          onTap: _onItemTapped,
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -1579,7 +1829,7 @@ class _AppTabsControllerState extends State<AppTabsController> {
 // ===================================================================
 
 class RatingScreen extends StatefulWidget {
-  // ✅ ADICIONADO: Recebe a nota inicial e o índice da aba
+  // ADICIONADO: Recebe a nota inicial e o índice da aba
   final int currentShift;
   final int initialRating;
   final int initialTabIndex;
@@ -1615,7 +1865,7 @@ class _RatingScreenState extends State<RatingScreen> {
   void initState() {
     super.initState();
 
-    // ✅ CORREÇÃO: Inicializa com o valor passado ou usa 0 como padrão.
+    // CORREÇÃO: Inicializa com o valor passado ou usa 0 como padrão.
     _selectedStars = widget.initialRating ?? 0;
 
     // Define a aba inicial com o valor passado ou usa 0 (Positivo) como padrão.
@@ -1643,7 +1893,7 @@ class _RatingScreenState extends State<RatingScreen> {
 
   void _handleStarClick(int star, BuildContext tabContext) {
     setState(() {
-      // ✅ CORREÇÃO: Apenas a estrela clicada é armazenada (comportamento "radio button")
+      // CORREÇÃO: Apenas a estrela clicada é armazenada (comportamento "radio button")
       _selectedStars = star;
     });
 
@@ -1733,7 +1983,7 @@ class _RatingScreenState extends State<RatingScreen> {
       child: Scaffold(
         body: Stack(
           children: [
-            // ✅ FUNDO RESPONSIVO
+            // FUNDO RESPONSIVO
             Positioned.fill(
               child: IgnorePointer(
                 child: Opacity(
@@ -1759,10 +2009,10 @@ class _RatingScreenState extends State<RatingScreen> {
               ),
             ),
 
-            // ✅ CONTEÚDO RESPONSIVO
+            // CONTEÚDO RESPONSIVO
             Column(
               children: [
-                // ✅ TAB BAR RESPONSIVO
+                // TAB BAR RESPONSIVO
                 Container(
                   color: Colors.transparent,
                   child: TabBar(
@@ -1800,7 +2050,7 @@ class _RatingScreenState extends State<RatingScreen> {
                   ),
                 ),
 
-                // ✅ COMENTÁRIO RESPONSIVO
+                // COMENTÁRIO RESPONSIVO
                 Padding(
                   padding: EdgeInsets.all(screenWidth * 0.04),
                   child: TextField(
@@ -1816,7 +2066,7 @@ class _RatingScreenState extends State<RatingScreen> {
                   ),
                 ),
 
-                // ✅ BOTÃO RESPONSIVO
+                // BOTÃO RESPONSIVO
                 Padding(
                   padding: EdgeInsets.all(screenWidth * 0.04),
                   child: ElevatedButton(
@@ -1902,7 +2152,7 @@ class DetailedFeedbackTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ✅ CATEGORIAS RESPONSIVAS
+          // CATEGORIAS RESPONSIVAS
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: ['Comida', 'Serviço', 'Ambiente']
@@ -1924,7 +2174,7 @@ class DetailedFeedbackTab extends StatelessWidget {
 
           SizedBox(height: screenWidth * 0.04),
 
-          // ✅ BOTÕES RESPONSIVOS
+          // BOTÕES RESPONSIVOS
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: ['Comida', 'Serviço', 'Ambiente']
@@ -1974,12 +2224,12 @@ class CategoryFeedbackColumn extends StatelessWidget {
     final Color baseColor = isPositive ? Colors.green : Colors.red;
     final List<String> currentPhrases = phrases['$category $sentiment'] ?? [];
 
-    // ✅ DETECÇÃO DE TAMANHO DE TELA
+    // DETECÇÃO DE TAMANHO DE TELA
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 360;
     final isLargeScreen = screenWidth > 600;
 
-    // ✅ LARGURA MÁXIMA RESPONSIVA
+    // LARGURA MÁXIMA RESPONSIVA
     final maxButtonWidth = isSmallScreen
         ? screenWidth * 0.9
         : (isLargeScreen ? 200.0 : double.infinity);
@@ -1987,7 +2237,7 @@ class CategoryFeedbackColumn extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.symmetric(
         horizontal: screenWidth * 0.02,
-      ), // ✅ PADDING RESPONSIVO
+      ), // PADDING RESPONSIVO
       child: Column(
         children: currentPhrases
             .map(
@@ -2007,7 +2257,7 @@ class CategoryFeedbackColumn extends StatelessWidget {
     );
   }
 
-  // ✅ MÉTODO _buildButton RESPONSIVO
+  // MÉTODO _buildButton RESPONSIVO
   Widget _buildButton({
     required String phrase,
     required Color baseColor,
@@ -2015,7 +2265,7 @@ class CategoryFeedbackColumn extends StatelessWidget {
     required bool isSelected,
     required VoidCallback onTap,
   }) {
-    // ✅ DETECÇÃO DE TAMANHO
+    // DETECÇÃO DE TAMANHO
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 360;
     final isLargeScreen = screenWidth > 600;
@@ -2031,7 +2281,7 @@ class CategoryFeedbackColumn extends StatelessWidget {
         : Colors.red.shade700;
     final Color unselectedTextColor = Colors.black87;
 
-    // ✅ QUEBRA DE LINHA RESPONSIVA
+    // QUEBRA DE LINHA RESPONSIVA
     String formattedPhrase = phrase;
     int firstSpaceIndex = phrase.indexOf(' ');
 
@@ -2045,7 +2295,7 @@ class CategoryFeedbackColumn extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.only(
         bottom: screenWidth * 0.02,
-      ), // ✅ ESPAÇAMENTO RESPONSIVO
+      ), // ESPAÇAMENTO RESPONSIVO
       child: GestureDetector(
         onTap: onTap,
         child: AnimatedContainer(
@@ -2058,7 +2308,7 @@ class CategoryFeedbackColumn extends StatelessWidget {
               width: isSelected ? 2.0 : 1.0,
             ),
           ),
-          // ✅ PADDING RESPONSIVO
+          // PADDING RESPONSIVO
           padding: EdgeInsets.symmetric(
             horizontal: screenWidth * 0.03,
             vertical: isSmallScreen ? 8 : (isLargeScreen ? 12 : 10),
@@ -2067,7 +2317,7 @@ class CategoryFeedbackColumn extends StatelessWidget {
           child: Text(
             formattedPhrase,
             textAlign: TextAlign.center,
-            // ✅ TEXTO RESPONSIVO
+            // TEXTO RESPONSIVO
             style: TextStyle(
               fontSize: isSmallScreen ? 14 : (isLargeScreen ? 17 : 16),
               color: isSelected ? Colors.white : unselectedTextColor,
@@ -2094,10 +2344,10 @@ class StatisticsScreen extends StatefulWidget {
 
 class _StatisticsScreenState extends State<StatisticsScreen>
     with WidgetsBindingObserver {
-  // ✅ ADICIONE: Estado para controlar o tipo de gráfico
+  // ADICIONE: Estado para controlar o tipo de gráfico
   String _selectedView = 'Total'; // 'Total', 'Média', 'MaisAvaliado'
 
-  // ✅ LEGENDAS NA ORDEM CORRETA: Excelente → Péssimo
+  // LEGENDAS NA ORDEM CORRETA: Excelente → Péssimo
   static List<String> _sentimentLabels = [
     'Excelente', // Índice 0 - 5 estrelas
     'Bom', // Índice 1 - 4 estrelas
@@ -2121,7 +2371,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     super.dispose();
   }
 
-  // ✅ FECHA TODOS OS OVERLAYS/POP-UPS
+  // FECHA TODOS OS OVERLAYS/POP-UPS
   void _closeAllOverlays() {
     _exportOverlayEntry?.remove();
     _exportOverlayEntry = null;
@@ -2173,11 +2423,11 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     return phrasesMap[phrase] ?? false;
   }
 
-  // ✅ MÉTODO PARA CONVERTER NÚMERO PARA NOME DA CATEGORIA
+  // MÉTODO PARA CONVERTER NÚMERO PARA NOME DA CATEGORIA
   String getCategoryName(int stars) {
     switch (stars) {
       case 5:
-        return 'Excelente'; // ✅ AGORA NO TOPO
+        return 'Excelente'; // AGORA NO TOPO
       case 4:
         return 'Bom';
       case 3:
@@ -2185,20 +2435,20 @@ class _StatisticsScreenState extends State<StatisticsScreen>
       case 2:
         return 'Ruim';
       case 1:
-        return 'Péssimo'; // ✅ AGORA NA BASE
+        return 'Péssimo'; // AGORA NA BASE
       default:
         return '$stars estrelas';
     }
   }
 
-  // ✅ ADICIONE os botões de controle
+  // ADICIONE os botões de controle
   Widget _buildViewSelector() {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 360;
 
     return Column(
       children: [
-        if (isSmallScreen) // ✅ LAYOUT VERTICAL PARA TELAS PEQUENAS
+        if (isSmallScreen) // LAYOUT VERTICAL PARA TELAS PEQUENAS
           Column(
             children: [
               _buildViewButton('Total', _selectedView == 'Total'),
@@ -2211,7 +2461,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
               ),
             ],
           )
-        else // ✅ LAYOUT HORIZONTAL PARA TELAS MÉDIAS/GRANDES
+        else // LAYOUT HORIZONTAL PARA TELAS MÉDIAS/GRANDES
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -2263,7 +2513,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
   Widget build(BuildContext context) {
     final int selectedShift = widget.currentShift;
 
-    // ✅ DETECÇÃO DE TAMANHO
+    // DETECÇÃO DE TAMANHO
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
     final isSmallScreen = screenWidth < 360;
@@ -2289,7 +2539,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                 child: Align(
                   alignment: Alignment.topLeft,
                   child: SingleChildScrollView(
-                    // ✅ PADDING RESPONSIVO
+                    // PADDING RESPONSIVO
                     padding: EdgeInsets.all(
                       isSmallScreen ? 20 : (isLargeScreen ? 40 : 32),
                     ),
@@ -2309,7 +2559,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                           textAlign: TextAlign.center,
                         ),
 
-                        // ✅ MAIS ESPAÇO ENTRE TÍTULO E SUBTÍTULO
+                        // MAIS ESPAÇO ENTRE TÍTULO E SUBTÍTULO
                         SizedBox(height: isSmallScreen ? 12 : 16),
 
                         Text(
@@ -2323,7 +2573,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                           textAlign: TextAlign.center,
                         ),
 
-                        // ✅ MAIS ESPAÇO ENTRE SUBTÍTULO E GRÁFICO
+                        // MAIS ESPAÇO ENTRE SUBTÍTULO E GRÁFICO
                         SizedBox(height: isSmallScreen ? 28 : 50),
 
                         // 2. GRÁFICO + LEGENDA
@@ -2331,7 +2581,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                           builder: (context, constraints) {
                             final isWide = constraints.maxWidth > 500;
 
-                            // ✅ TAMANHO DO GRÁFICO FIXO PARA GARANTIR VISIBILIDADE
+                            // TAMANHO DO GRÁFICO FIXO PARA GARANTIR VISIBILIDADE
                             final double chartSize = isSmallScreen
                                 ? 180.0
                                 : (isLargeScreen ? 280.0 : 220.0);
@@ -2393,7 +2643,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                                 children: [
                                   pieChartWidget,
 
-                                  // ✅ MAIS ESPAÇO ENTRE GRÁFICO E LEGENDA
+                                  // MAIS ESPAÇO ENTRE GRÁFICO E LEGENDA
                                   SizedBox(height: isSmallScreen ? 20 : 28),
 
                                   _buildStarLegend(
@@ -2407,7 +2657,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                           },
                         ),
 
-                        // ✅ MAIS ESPAÇO ENTRE GRÁFICO E DIVIDER
+                        // MAIS ESPAÇO ENTRE GRÁFICO E DIVIDER
                         SizedBox(height: isSmallScreen ? 50 : 70),
 
                         const Divider(),
@@ -2424,7 +2674,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                           textAlign: TextAlign.left,
                         ),
 
-                        // ✅ ESPAÇO ENTRE TÍTULO E SUBTÍTULO DOS DETALHES
+                        // ESPAÇO ENTRE TÍTULO E SUBTÍTULO DOS DETALHES
                         SizedBox(height: isSmallScreen ? 8 : 12),
 
                         Text(
@@ -2438,17 +2688,17 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                           textAlign: TextAlign.left,
                         ),
 
-                        // ✅ ESPAÇO ENTRE SUBTÍTULO E LISTA
+                        // ESPAÇO ENTRE SUBTÍTULO E LISTA
                         SizedBox(height: isSmallScreen ? 16 : 20),
 
                         _buildDetailedStats(detailedRatings),
 
-                        // ✅ BOTÕES E GRÁFICOS CONDICIONAIS RESPONSIVOS
+                        // BOTÕES E GRÁFICOS CONDICIONAIS RESPONSIVOS
                         SizedBox(height: isSmallScreen ? 30 : 45),
 
                         const Divider(),
 
-                        // ✅ ESPAÇO ENTRE DIVIDER E TÍTULO
+                        // ESPAÇO ENTRE DIVIDER E TÍTULO
                         SizedBox(height: isSmallScreen ? 8 : 12),
 
                         Text(
@@ -2462,15 +2712,15 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                           textAlign: TextAlign.center,
                         ),
 
-                        // ✅ ESPAÇO ENTRE TÍTULO E BOTÕES
+                        // ESPAÇO ENTRE TÍTULO E BOTÕES
                         SizedBox(height: isSmallScreen ? 18 : 24),
 
                         _buildViewSelector(),
 
-                        // ✅ ESPAÇO ENTRE BOTÕES E GRÁFICOS
+                        // ESPAÇO ENTRE BOTÕES E GRÁFICOS
                         SizedBox(height: isSmallScreen ? 20 : 28),
 
-                        // ✅ GRÁFICOS CONDICIONAIS
+                        // GRÁFICOS CONDICIONAIS
                         if (_selectedView == 'Total')
                           _buildLast7DaysBarChart(appData, selectedShift),
                         if (_selectedView == 'Média')
@@ -2482,7 +2732,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                   ),
                 ),
               ),
-              // ✅ BOTÃO DE EXPORTAÇÃO
+              // BOTÃO DE EXPORTAÇÃO
               _buildExportButton(context),
             ],
           ),
@@ -2491,7 +2741,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     );
   }
 
-  // ✅ MODIFIQUE O MÉTODO _buildExportButton para usar Navigator
+  // MODIFIQUE O MÉTODO _buildExportButton para usar Navigator
   Widget _buildExportButton(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16.0),
@@ -2522,7 +2772,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     );
   }
 
-  // ✅ NOVO MÉTODO SEGURO PARA EXPORTAÇÃO
+  // NOVO MÉTODO SEGURO PARA EXPORTAÇÃO
   void _exportDataWithSafety(BuildContext context) {
     // Fecha qualquer pop-up existente antes de abrir novo
     Navigator.of(context).popUntil((route) => route.isFirst);
@@ -2554,7 +2804,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     );
   }
 
-  // ✅ MOSTRAR OPÇÕES DE EXPORTAÇÃO
+  // MOSTRAR OPÇÕES DE EXPORTAÇÃO
   void _showExportOptions(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -2624,10 +2874,10 @@ class _StatisticsScreenState extends State<StatisticsScreen>
           return PieChartSectionData(
             color: appData.pieColors[star - 1],
             value: percentage,
-            radius: chartSize * 0.4, // ✅ RAIO PROPORCIONAL
+            radius: chartSize * 0.4, // RAIO PROPORCIONAL
             title: '${percentage.toStringAsFixed(0)}%',
             titleStyle: TextStyle(
-              fontSize: chartSize * 0.06, // ✅ TEXTO RESPONSIVO
+              fontSize: chartSize * 0.06, // TEXTO RESPONSIVO
               fontWeight: FontWeight.bold,
               color: Colors.white,
             ),
@@ -2650,7 +2900,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
         mainAxisSize: MainAxisSize.min,
         children: starRatings.entries
             .toList()
-            .reversed // ✅ INVERTE A ORDEM: 5,4,3,2,1
+            .reversed // INVERTE A ORDEM: 5,4,3,2,1
             .map((entry) {
               final int star = entry.key;
               final int count = entry.value;
@@ -2730,7 +2980,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     );
   }
 
-  // ✅ GRÁFICO DE TOTAL
+  // GRÁFICO DE TOTAL
   Widget _buildLast7DaysBarChart(AppData appData, int selectedShift) {
     final dailyData = appData.getLast7DaysStarRatings(selectedShift);
     final sortedDays = dailyData.keys.toList()..sort((a, b) => a.compareTo(b));
@@ -2820,7 +3070,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     );
   }
 
-  // ✅ GRÁFICO DE MÉDIA
+  // GRÁFICO DE MÉDIA
   Widget _buildAverageBarChart(AppData appData, int selectedShift) {
     final averageData = appData.getLast7DaysAverageRatings(selectedShift);
     final sortedDays = averageData.keys.toList()
@@ -2939,7 +3189,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     );
   }
 
-  // ✅ GRÁFICO DO MAIS AVALIADO
+  // GRÁFICO DO MAIS AVALIADO
   Widget _buildMostRatedBarChart(AppData appData, int selectedShift) {
     final mostRatedData = appData.getLast7DaysMostRated(selectedShift);
     final sortedDays = mostRatedData.keys.toList()
@@ -3147,20 +3397,17 @@ class _StatisticsScreenState extends State<StatisticsScreen>
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _buildLegendItem(
-              Colors.green.shade700,
-              'Excelente',
-            ), // ✅ 5 ESTRELAS
-            _buildLegendItem(Colors.lightGreen, 'Bom'), // ✅ 4 ESTRELAS
-            _buildLegendItem(Colors.amber, 'Neutro'), // ✅ 3 ESTRELAS
+            _buildLegendItem(Colors.green.shade700, 'Excelente'), // 5 ESTRELAS
+            _buildLegendItem(Colors.lightGreen, 'Bom'), // 4 ESTRELAS
+            _buildLegendItem(Colors.amber, 'Neutro'), // 3 ESTRELAS
           ],
         ),
         const SizedBox(height: 8),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _buildLegendItem(Colors.deepOrange, 'Ruim'), // ✅ 2 ESTRELAS
-            _buildLegendItem(Colors.red.shade700, 'Péssimo'), // ✅ 1 ESTRELA
+            _buildLegendItem(Colors.deepOrange, 'Ruim'), // 2 ESTRELAS
+            _buildLegendItem(Colors.red.shade700, 'Péssimo'), // 1 ESTRELA
           ],
         ),
       ],
@@ -3219,7 +3466,7 @@ class RatingSelectionScreen extends StatefulWidget {
 class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
   int _selectedStars = 0;
 
-  // ✅ EMOJIS NA ORDEM CORRETA PARA A NOVA SEQUÊNCIA
+  // EMOJIS NA ORDEM CORRETA PARA A NOVA SEQUÊNCIA
   final List<String> _ratingEmojis = const ['😍', '🙂', '😐', '😟', '😠'];
   // 😍 = Excelente (5)
   // 🙂 = Bom (4)
@@ -3253,7 +3500,7 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
 
     return Stack(
       children: [
-        // ✅ IMAGEM DE FUNDO RESPONSIVA
+        // IMAGEM DE FUNDO RESPONSIVA
         Positioned.fill(
           child: IgnorePointer(
             child: Opacity(
@@ -3279,7 +3526,7 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
           ),
         ),
 
-        // ✅ CONTEÚDO PRINCIPAL RESPONSIVO - AGORA CORRETAMENTE CENTRALIZADO
+        // CONTEÚDO PRINCIPAL RESPONSIVO - AGORA CORRETAMENTE CENTRALIZADO
         Positioned.fill(
           child: SafeArea(
             child: SingleChildScrollView(
@@ -3291,7 +3538,7 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // ✅ TÍTULO RESPONSIVO
+                  // TÍTULO RESPONSIVO
                   Text(
                     'Qual sua experiência geral?',
                     style: TextStyle(
@@ -3301,7 +3548,7 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                     textAlign: TextAlign.center,
                   ),
 
-                  // ✅ DATA RESPONSIVA
+                  // DATA RESPONSIVA
                   Consumer<AppData>(
                     builder: (context, appData, child) {
                       final now = DateTime.now();
@@ -3320,44 +3567,43 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
 
                   SizedBox(height: screenHeight * 0.04),
 
-                  // ✅ EMOJIS NA ORDEM INVERTIDA: EXCELENTE (5) → PÉSSIMO (1)
+                  // EMOJIS NA ORDEM INVERTIDA: EXCELENTE (5) → PÉSSIMO (1)
                   ...List.generate(5, (index) {
-                    // ✅ INVERTE A ORDEM: 5,4,3,2,1 em vez de 1,2,3,4,5
+                    // INVERTE A ORDEM: 5,4,3,2,1 em vez de 1,2,3,4,5
                     final int starValue =
                         5 -
                         index; // Excelente=5, Bom=4, Neutro=3, Ruim=2, Péssimo=1
                     final String currentEmoji =
-                        _ratingEmojis[index]; // ✅ USA O ÍNDICE DIRETO
+                        _ratingEmojis[index]; // USA O ÍNDICE DIRETO
                     final bool isSelected = starValue == _selectedStars;
 
                     final List<String> legendas = [
-                      'Excelente', // ✅ AGORA NA POSIÇÃO 0 (primeiro)
-                      'Bom', // ✅ POSIÇÃO 1
-                      'Neutro', // ✅ POSIÇÃO 2
-                      'Ruim', // ✅ POSIÇÃO 3
-                      'Péssimo', // ✅ POSIÇÃO 4 (último)
+                      'Excelente', // AGORA NA POSIÇÃO 0 (primeiro)
+                      'Bom', // POSIÇÃO 1
+                      'Neutro', // POSIÇÃO 2
+                      'Ruim', // POSIÇÃO 3
+                      'Péssimo', // POSIÇÃO 4 (último)
                     ];
                     final String legendaAtual = legendas[index];
 
                     return Container(
-                      width: screenWidth * 0.9, // ✅ LARGURA CONTROLADA
+                      width: screenWidth * 0.9, // LARGURA CONTROLADA
                       margin: EdgeInsets.symmetric(
                         vertical: screenHeight * 0.01,
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment
-                            .center, // ✅ CENTRALIZA TODO O CONTEÚDO
+                            .center, // CENTRALIZA TODO O CONTEÚDO
                         crossAxisAlignment: CrossAxisAlignment.center,
-                        mainAxisSize: MainAxisSize
-                            .min, // ✅ IMPEDE QUE OCUPE LARGURA TOTAL
+                        mainAxisSize:
+                            MainAxisSize.min, // IMPEDE QUE OCUPE LARGURA TOTAL
                         children: [
-                          // ✅ EMOJI AGORA CENTRALIZADO E MAIOR
+                          // EMOJI AGORA CENTRALIZADO E MAIOR
                           Container(
                             width: screenWidth * 0.2,
                             child: IconButton(
                               onPressed: () => _handleEmojiClick(starValue),
-                              padding:
-                                  EdgeInsets.zero, // ✅ REMOVE PADDING EXTRA
+                              padding: EdgeInsets.zero, // REMOVE PADDING EXTRA
                               style: ButtonStyle(
                                 side: WidgetStateProperty.all(BorderSide.none),
                                 backgroundColor:
@@ -3380,7 +3626,7 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                                   begin: 1.0,
                                   end: isSelected
                                       ? 1.3
-                                      : 1.0, // ✅ AUMENTEI A ANIMAÇÃO DE SELEÇÃO
+                                      : 1.0, // AUMENTEI A ANIMAÇÃO DE SELEÇÃO
                                 ),
                                 duration: const Duration(milliseconds: 200),
                                 builder:
@@ -3394,7 +3640,7 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                                         child: Text(
                                           currentEmoji,
                                           style: TextStyle(
-                                            // ✅ TAMANHO AUMENTADO E PROPORCIONAL
+                                            // TAMANHO AUMENTADO E PROPORCIONAL
                                             fontSize: isSmallScreen
                                                 ? 50 // Aumentado de 40 para 50
                                                 : (isLargeScreen
@@ -3410,9 +3656,9 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
 
                           SizedBox(width: screenWidth * 0.04),
 
-                          // ✅ LEGENDA RESPONSIVA
+                          // LEGENDA RESPONSIVA
                           Flexible(
-                            // ✅ USA FLEXIBLE EM VEZ DE EXPANDED
+                            // USA FLEXIBLE EM VEZ DE EXPANDED
                             child: Consumer<AppData>(
                               builder: (context, appData, child) {
                                 final starRatings = appData.getTodayStarRatings(
