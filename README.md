@@ -25,3 +25,31 @@ A aplicação é desenvolvida através do kit de desenvolvimento de software _**
 ## Dependências
 ```pubspec.yaml```
 
+# Informações úteis
+## Acessar CSV 
+### Pelo PC 
+No Android Studio, vá em ```View/Tools/Device Explorer``` e depois em ```data/data/com.example.app_restaurante/app_flutter/avaliacoes_registros.csv```.
+### Por dispositivo mobile
+Vá até o diretório ```data/data/com.example.app_restaurante/app_flutter/avaliacoes_registros.csv```.
+
+## Passos ao adicionar ícone novo
+- Feche o aplicativo se estiver rodando no emulador;
+- Copie o grupo de comandos abaixo para o terminal dentro do diretório do projeto (ex: no terminal do próprio VS Code);
+- Insira **A** (ou **a**) quando aparecer uma pergunta.
+```
+Remove-Item  android/app/src/main/res/mipmap-*
+Remove-Item -Recurse -Force android/app/src/main/res/drawable-*
+flutter clean
+flutter pub get
+flutter pub run flutter_launcher_icons
+```
+## Gerar APK do aplicativo
+Copie o seguinte grupo de comandos para o terminal dentro do diretório do projeto (ex no terminal do próprio VS Code):
+```
+flutter clean
+flutter pub get
+flutter build apk --release --no-tree-shake-icons
+```
+Feito isso, ele encontra-se dentro do diretório do projeto em ```\build\app\outputs\flutter-apk```.
+
+No Windows, por exemplo, ele se encontra em ```C:\Users\Seu_Usuário\Aplicativo-Avaliacao-Restaurante-CostaFoods\build\app\outputs\flutter-apk```.
