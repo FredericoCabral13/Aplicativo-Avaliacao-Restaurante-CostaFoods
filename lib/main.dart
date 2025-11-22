@@ -35,14 +35,24 @@ class AppData extends ChangeNotifier {
   // ✅ LISTA DE UNIDADES DA EMPRESA
   final List<String> companyUnits = [
     'Matriz',
-    'Unidade 2',
-    'Unidade 3',
-    'Unidade 4',
-    'Unidade 5',
+    'Incubatório',
+    'Fábrica de Ração',
+    'Matrizeiro Esmeraldas',
+    'Matrizeiro C. do Cajuru',
+    'Armazém de Grãos',
+  ];
+
+  // ✅ LISTA DE TIPOS DE UNIFORME PARA MATRIZ
+  final List<String> uniformTypes = [
+    'Uniforme Branco',
+    'Uniforme Colorido',
+    'Administrativo',
   ];
 
   String? _selectedUnit; // Unidade selecionada
+  String? _selectedUniformType; // Tipo de uniforme selecionado
   bool _showUnitSelection = false; // Controla se mostra o pop-up
+  bool _showUniformSelection = false; // Controla se mostra seleção de uniforme
 
   // NOVIDADE: Lista para armazenar CADA avaliação como um registro de mapa
   List<Map<String, dynamic>> allEvaluationRecords = [];
@@ -96,6 +106,7 @@ class AppData extends ChangeNotifier {
   }
 
   // ✅ VERIFICA SE É A PRIMEIRA VEZ QUE ABRE O APP
+  // ✅ VERIFICA SE É A PRIMEIRA VEZ QUE ABRE O APP (ATUALIZADO)
   Future<void> _checkFirstTimeOpen() async {
     final prefs = await SharedPreferences.getInstance();
     final bool isFirstTime = prefs.getBool('is_first_time') ?? true;
@@ -108,27 +119,61 @@ class AppData extends ChangeNotifier {
       // Marca que não é mais a primeira vez
       await prefs.setBool('is_first_time', false);
     } else {
-      // Não é a primeira vez - carrega unidade salva
+      // Não é a primeira vez - carrega unidade e uniforme salvos
       _selectedUnit = prefs.getString('selected_unit');
+      _selectedUniformType = prefs.getString('selected_uniform_type');
       _showUnitSelection = false;
+      _showUniformSelection = false;
     }
   }
 
   // ✅ SELECIONA UMA UNIDADE
   Future<void> selectUnit(String unit) async {
     _selectedUnit = unit;
-    _showUnitSelection = false;
 
-    // Salva a unidade selecionada
+    // ✅ SE A UNIDADE FOR "MATRIZ", MOSTRA SELEÇÃO DE UNIFORME
+    if (unit == 'Matriz') {
+      _showUnitSelection = false;
+      _showUniformSelection = true;
+    } else {
+      // Para outras unidades, vai direto para o app
+      _showUnitSelection = false;
+      _showUniformSelection = false;
+
+      // Salva a unidade selecionada
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('selected_unit', unit);
+    }
+
+    notifyListeners();
+  }
+
+  // ✅ SELECIONA UM TIPO DE UNIFORME
+  Future<void> selectUniformType(String uniformType) async {
+    _selectedUniformType = uniformType;
+    _showUniformSelection = false;
+
+    // Salva as preferências
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('selected_unit', unit);
+    await prefs.setString('selected_unit', 'Matriz');
+    await prefs.setString('selected_uniform_type', uniformType);
 
     notifyListeners();
   }
 
   // ✅ GETTERS PARA ACESSAR OS DADOS
   String? get selectedUnit => _selectedUnit;
+  String? get selectedUniformType => _selectedUniformType;
   bool get showUnitSelection => _showUnitSelection;
+  bool get showUniformSelection => _showUniformSelection;
+
+  // ✅ MÉTODO PARA OBTER O NOME COMPLETO DA UNIDADE
+  String getFullUnitName() {
+    if (_selectedUnit == 'Matriz' && _selectedUniformType != null) {
+      return '$_selectedUnit - $_selectedUniformType';
+    }
+    return _selectedUnit ?? 'Não definida';
+  }
 
   // ✅ MÉTODO PARA ALTERAR A UNIDADE (se necessário)
   Future<void> changeUnit() async {
@@ -154,6 +199,7 @@ class AppData extends ChangeNotifier {
     final String satisfacao = _getSatisfactionStatus(
       star,
     ); // ✅ CALCULA SATISFAÇÃO
+    final String unidadeCSV = _getUnitForCSV(); // ✅ UNIDADE FORMATADA
 
     final newRecord = {
       'timestamp': DateTime.now().toIso8601String(),
@@ -163,6 +209,8 @@ class AppData extends ChangeNotifier {
       'positivos': positiveFeedbacks.join('; '),
       'negativos': negativeFeedbacks.join('; '),
       'comentario': comment ?? '',
+      'satisfacao': satisfacao,
+      'unidade_csv': unidadeCSV,
     };
 
     allEvaluationRecords.add(newRecord);
@@ -232,6 +280,7 @@ class AppData extends ChangeNotifier {
       'positivos_clicados',
       'negativos_clicados',
       'comentario',
+      'unidade',
     ]);
 
     // Linhas de dados (Itera sobre a lista de registros)
@@ -247,6 +296,7 @@ class AppData extends ChangeNotifier {
         record['positivos'],
         record['negativos'],
         record['comentario'],
+        _getUnitForCSV(),
       ]);
     }
 
@@ -269,24 +319,27 @@ class AppData extends ChangeNotifier {
     for (int i = 1; i < csvData.length; i++) {
       final row = csvData[i];
 
-      // ✅ COMPATIBILIDADE: Verifica se tem a coluna de satisfação
-      if (row.length >= 6) {
+      if (row.length >= 7) {
         Map<String, dynamic> record = {
           'timestamp': row[0].toString(),
           'turno': row[1] as int,
           'estrelas': row[2] as int,
-          'positivos': row[3].toString(),
-          'negativos': row[4].toString(),
-          'comentario': row[5].toString(),
+          'positivos': row[4].toString(),
+          'negativos': row[5].toString(),
+          'comentario': row[6].toString(),
         };
 
-        // ✅ SE TEM A COLUNA DE SATISFAÇÃO (versões mais recentes)
-        if (row.length >= 7) {
-          record['satisfacao'] = row[6].toString();
+        // ✅ COLUNA DE SATISFAÇÃO (índice 3)
+        if (row.length > 3) {
+          record['satisfacao'] = row[3].toString();
         } else {
-          // ✅ CALCULA SATISFAÇÃO PARA REGISTROS ANTIGOS
           final int stars = row[2] as int;
           record['satisfacao'] = _getSatisfactionStatus(stars);
+        }
+
+        // ✅ COLUNA DE UNIDADE (índice 7 - se existir)
+        if (row.length >= 8) {
+          record['unidade_csv'] = row[7].toString();
         }
 
         allEvaluationRecords.add(record);
@@ -506,17 +559,16 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  /// DIALOG DE SUCESSO COM OPÇÕES (CORRIGIDO)
+  /// DIALOG DE SUCESSO COM OPÇÕES
   Future<void> _showExportSuccessDialog(
     BuildContext context,
     String filePath,
   ) async {
-    // GARANTE QUE O CONTEXTO AINDA ESTÁ VÁLIDO
     if (!context.mounted) return;
 
     final result = await showDialog<int>(
       context: context,
-      barrierDismissible: true, // PERMITE FECHAR CLICANDO FORA
+      barrierDismissible: true,
       builder: (context) => AlertDialog(
         title: const Text('Exportação Concluída!'),
         content: const Text(
@@ -543,12 +595,17 @@ class AppData extends ChangeNotifier {
 
     switch (result) {
       case 1: // Abrir Arquivo
-        await Share.shareXFiles([XFile(filePath)]);
+        await Share.shareXFiles(
+          [XFile(filePath)],
+          text: _getShareMessage(), // ✅ MENSAGEM NO COMPARTILHAMENTO DIRETO
+        );
         break;
       case 2: // Compartilhar
-        await Share.shareXFiles([
-          XFile(filePath),
-        ], text: 'Exportação de Avaliações - Costa Foods');
+        await Share.shareXFiles(
+          [XFile(filePath)],
+          text: _getShareMessage(), // ✅ MENSAGEM NO COMPARTILHAMENTO
+          subject: 'Avaliações Restaurante Costa Foods - Relatório',
+        );
         break;
       // case 3: OK - não faz nada
     }
@@ -955,16 +1012,22 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  // COMPARTILHAR ARQUIVO (mantém igual)
+  // ✅ COMPARTILHAR ARQUIVO COM MENSAGEM PERSONALIZADA
   Future<void> _shareFile(BuildContext context, String csvData) async {
     try {
       final directory = await getTemporaryDirectory();
       final file = File('${directory.path}/avaliacoes_costa_foods.csv');
       await file.writeAsString(csvData, flush: true);
 
-      await Share.shareXFiles([
-        XFile(file.path),
-      ], text: 'Exportação de Avaliações - Costa Foods');
+      // ✅ MENSAGEM PERSONALIZADA PARA COMPARTILHAMENTO
+      final String shareMessage = _getShareMessage();
+
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: shareMessage, // ✅ MENSAGEM PERSONALIZADA
+        subject:
+            '(${_selectedUnit ?? 'Não definida'}) Avaliações Restaurante Costa Foods - Relatório', // ✅ ASSUNTO
+      );
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -975,6 +1038,18 @@ class AppData extends ChangeNotifier {
         );
       }
     }
+  }
+
+  // ✅ GERA MENSAGEM PERSONALIZADA PARA COMPARTILHAMENTO
+  String _getShareMessage() {
+    final totalAvaliacoes = allEvaluationRecords.length;
+
+    return '''
+Unidade: ${_selectedUnit ?? 'Não definida'}
+Data: ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}
+
+Arquivo contém dados completos das avaliações dos clientes.
+''';
   }
 
   // OBTER PASTA DOWNLOADS
@@ -1067,7 +1142,7 @@ class AppData extends ChangeNotifier {
       'Turno',
       'Avaliação',
       'Categoria',
-      'Status de Satisfação', // ✅ NOVA COLUNA
+      'Status de Satisfação',
       'Feedbacks Positivos',
       'Feedbacks Negativos',
       'Comentário',
@@ -1077,13 +1152,11 @@ class AppData extends ChangeNotifier {
       final int stars = record['estrelas'] as int;
       final category = getCategoryName(stars);
       final turno = record['turno'] == 1 ? 'Manhã/Tarde' : 'Noite/Madrugada';
-
-      // ✅ USA O STATUS JÁ SALVO OU CALCULA NOVO
       final String satisfactionStatus =
           record['satisfacao']?.toString() ?? _getSatisfactionStatus(stars);
 
       csvData.add([
-        _selectedUnit ?? 'Não definida',
+        getFullUnitName(), // ✅ USA O NOME COMPLETO DA UNIDADE
         record['timestamp'],
         turno,
         '${record['estrelas']} estrelas ($category)',
@@ -1196,6 +1269,24 @@ class AppData extends ChangeNotifier {
       await _openFolder(context, filePath);
     }
   }
+
+  // ✅ MÉTODO PARA FORMATAR A UNIDADE NO CSV
+  String _getUnitForCSV() {
+    if (_selectedUnit == 'Matriz' && _selectedUniformType != null) {
+      // ✅ PARA MATRIZ: MOSTRA APENAS A COR DO UNIFORME
+      switch (_selectedUniformType) {
+        case 'Uniforme Branco':
+          return 'Branco';
+        case 'Uniforme Colorido':
+          return 'Colorido';
+        case 'Administrativo':
+          return 'Admin';
+        default:
+          return _selectedUniformType!;
+      }
+    }
+    return _selectedUnit ?? 'Não definida';
+  }
 }
 
 // ===================================================================
@@ -1235,6 +1326,7 @@ class MyApp extends StatelessWidget {
 }
 
 // ✅ NOVO WIDGET QUE GERENCIA O POP-UP DE UNIDADE
+// ✅ NOVO WIDGET QUE GERENCIA O POP-UP DE UNIDADE E UNIFORME
 class AppWithUnitSelection extends StatelessWidget {
   const AppWithUnitSelection({super.key});
 
@@ -1242,7 +1334,12 @@ class AppWithUnitSelection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<AppData>(
       builder: (context, appData, child) {
-        // ✅ SE PRECISA MOSTRAR A SELEÇÃO DE UNIDADE, MOSTRA O POP-UP
+        // ✅ SE PRECISA MOSTRAR A SELEÇÃO DE UNIFORME
+        if (appData.showUniformSelection) {
+          return _buildUniformSelectionDialog(context, appData);
+        }
+
+        // ✅ SE PRECISA MOSTRAR A SELEÇÃO DE UNIDADE
         if (appData.showUnitSelection) {
           return _buildUnitSelectionDialog(context, appData);
         }
@@ -1253,7 +1350,7 @@ class AppWithUnitSelection extends StatelessWidget {
     );
   }
 
-  // ✅ CONSTRÓI O DIALOG DE SELEÇÃO DE UNIDADE
+  // ✅ MÉTODO PARA CONSTRUIR DIALOG DE SELEÇÃO DE UNIDADE
   Widget _buildUnitSelectionDialog(BuildContext context, AppData appData) {
     return Scaffold(
       backgroundColor: Colors.black54,
@@ -1275,7 +1372,6 @@ class AppWithUnitSelection extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // ✅ ÍCONE E TÍTULO
               Icon(
                 Icons.business_rounded,
                 size: 64,
@@ -1303,7 +1399,6 @@ class AppWithUnitSelection extends StatelessWidget {
 
               const SizedBox(height: 24),
 
-              // ✅ LISTA DE UNIDADES
               ...appData.companyUnits.map((unit) {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 12),
@@ -1334,9 +1429,115 @@ class AppWithUnitSelection extends StatelessWidget {
 
               const SizedBox(height: 16),
 
-              // ✅ INFORMAÇÃO
               Text(
                 'Esta seleção será salva e usada em todas as avaliações.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                  fontStyle: FontStyle.italic,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ✅ MÉTODO PARA CONSTRUIR DIALOG DE SELEÇÃO DE UNIFORME
+  Widget _buildUniformSelectionDialog(BuildContext context, AppData appData) {
+    return Scaffold(
+      backgroundColor: Colors.black54,
+      body: Center(
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.9,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.people_alt_rounded,
+                size: 64,
+                color: const Color.fromARGB(255, 111, 136, 63),
+              ),
+              const SizedBox(height: 16),
+
+              Text(
+                'Seleção de Uniforme - Matriz',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: const Color.fromARGB(255, 111, 136, 63),
+                ),
+                textAlign: TextAlign.center,
+              ),
+
+              const SizedBox(height: 8),
+
+              Text(
+                'Selecione o tipo de uniforme da equipe:',
+                style: TextStyle(fontSize: 16, color: Colors.grey[700]),
+                textAlign: TextAlign.center,
+              ),
+
+              const SizedBox(height: 24),
+
+              ...appData.uniformTypes.map((uniformType) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: ElevatedButton(
+                    onPressed: () => appData.selectUniformType(uniformType),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color.fromARGB(255, 111, 136, 63),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 16,
+                        horizontal: 20,
+                      ),
+                      minimumSize: const Size(double.infinity, 50),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Text(
+                      uniformType,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+
+              const SizedBox(height: 16),
+
+              OutlinedButton(
+                onPressed: () {
+                  // ✅ CORREÇÃO: Usa métodos públicos do AppData
+                  appData._showUnitSelection = true;
+                  appData._showUniformSelection = false;
+                  appData.notifyListeners();
+                },
+                child: const Text('Voltar para seleção de unidade'),
+              ),
+
+              const SizedBox(height: 8),
+
+              Text(
+                'Esta seleção será salva e usada em todas as avaliações da Matriz.',
                 style: TextStyle(
                   fontSize: 12,
                   color: Colors.grey[600],
@@ -1451,7 +1652,12 @@ class _AppTabsControllerState extends State<AppTabsController> {
     );
   }
 
-  // REINICIA O TIMER A CADA INTERAÇÃO
+  // MÈTODO PÚBLICO
+  void resetTimerOnInteraction() {
+    _resetTimerOnInteraction();
+  }
+
+  // MÉTODO PRIVADO TAMBÉM
   void _resetTimerOnInteraction() {
     _startInactivityTimer();
   }
@@ -1569,15 +1775,10 @@ class _AppTabsControllerState extends State<AppTabsController> {
     });
   }
 
-  // Função chamada pelo menu para trocar o turno (permanece inalterada)
-  void _selectShift(int shift) {
-    _resetTimerOnInteraction(); // REINICIA TIMER
-    setState(() {
-      _currentShift = shift;
-    });
-  }
-
   void _navigateToFeedbackScreen(int rating, int tabIndex) {
+    // REINICIA O TIMER AO ENTRAR NA TELA DE FEEDBACKS
+    _resetTimerOnInteraction();
+
     // ADICIONE uma animação suave:
     Future.delayed(Duration.zero, () {
       setState(() {
@@ -1630,6 +1831,14 @@ class _AppTabsControllerState extends State<AppTabsController> {
                     controller: _passwordController,
                     onChanged: (value) {
                       _resetKeyboardTimer(); // REINICIA TIMER A CADA DIGITAÇÃO
+
+                      // ✅ CONFIRMAÇÃO AUTOMÁTICA AO DIGITAR O 4º DÍGITO
+                      if (value.length == 4) {
+                        Future.delayed(Duration(milliseconds: 100), () {
+                          _checkPassword();
+                        });
+                      }
+
                       setDialogState(() {});
                     },
                     onTap:
@@ -1657,20 +1866,6 @@ class _AppTabsControllerState extends State<AppTabsController> {
                 },
                 child: const Text('Cancelar'),
               ),
-
-              // BOTÃO VERIFICAR
-              ElevatedButton(
-                onPressed: _passwordController.text.length == 4
-                    ? _checkPassword
-                    : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color.fromARGB(255, 111, 136, 63),
-                ),
-                child: const Text(
-                  'Verificar',
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
             ],
           ),
         );
@@ -1679,36 +1874,24 @@ class _AppTabsControllerState extends State<AppTabsController> {
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
     final List<Widget> widgetOptions = <Widget>[
-      GestureDetector(
-        onTap: _resetTimerOnInteraction,
-        behavior: HitTestBehavior.translucent,
-        child: RatingSelectionScreen(
-          onRatingSelected: _navigateToFeedbackScreen,
-          selectedRating: _selectedRatingFromHome,
-          currentShift: _currentShift,
-        ),
+      RatingSelectionScreen(
+        onRatingSelected: _navigateToFeedbackScreen,
+        selectedRating: _selectedRatingFromHome,
+        currentShift: _currentShift,
       ),
-      GestureDetector(
-        onTap: _resetTimerOnInteraction,
-        behavior: HitTestBehavior.translucent,
-        child: RatingScreen(
-          currentShift: _currentShift,
-          initialRating: _selectedRatingFromHome ?? 0,
-          initialTabIndex: _initialTabIndex ?? 0,
-          onBackToHome: _resetHomeScreen,
-        ),
+      RatingScreen(
+        currentShift: _currentShift,
+        initialRating: _selectedRatingFromHome ?? 0,
+        initialTabIndex: _initialTabIndex ?? 0,
+        onBackToHome: _resetHomeScreen,
       ),
-      GestureDetector(
-        onTap: _resetTimerOnInteraction,
-        behavior: HitTestBehavior.translucent,
-        child: StatisticsScreen(currentShift: _currentShift),
-      ),
+      StatisticsScreen(currentShift: _currentShift),
     ];
 
     return Consumer<AppData>(
-      // ✅ ADICIONE ESTE CONSUMER
       builder: (context, appData, child) {
         return Scaffold(
           appBar: AppBar(
@@ -1716,18 +1899,16 @@ class _AppTabsControllerState extends State<AppTabsController> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                // ✅ TÍTULO PRINCIPAL
                 Text(
                   _selectedIndex == 0
                       ? 'Avaliação do Restaurante (Turno $_currentShift)'
-                      : 'Estatísticas das Avaliações (Turno $_currentShift)',
+                      : 'Feedbacks (Turno $_currentShift)',
                   style: const TextStyle(
-                    fontSize: 18.0, // ✅ REDUZIDO para caber melhor
+                    fontSize: 18.0,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
                 ),
-                // ✅ UNIDADE SELECIONADA (se existir)
                 if (appData.selectedUnit != null)
                   Text(
                     appData.selectedUnit!,
@@ -1741,83 +1922,55 @@ class _AppTabsControllerState extends State<AppTabsController> {
             ),
             backgroundColor: Color.fromARGB(255, 111, 136, 63),
             elevation: 4,
-            actions: _selectedIndex == 1
-                ? [
-                    IconButton(
-                      icon: const Icon(
-                        Icons.access_time_filled,
-                        color: Colors.white,
-                      ),
-                      onPressed: () {
-                        _resetTimerOnInteraction();
-                        setState(() {
-                          _selectedIndex = 0;
-                        });
-                        _resetHomeScreen();
-                      },
-                    ),
-                  ]
-                : [
-                    PopupMenuButton<int>(
-                      onSelected: _selectShift,
-                      itemBuilder: (BuildContext context) =>
-                          <PopupMenuEntry<int>>[
-                            const PopupMenuItem<int>(
-                              value: 1,
-                              child: Text('Turno 1 (Manhã/Tarde)'),
-                            ),
-                            const PopupMenuItem<int>(
-                              value: 2,
-                              child: Text('Turno 2 (Noite/Madrugada)'),
-                            ),
-                          ],
-                      icon: const Icon(
-                        Icons.access_time_filled,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
+            actions: _selectedIndex == 1 ? [] : [],
           ),
           body: Stack(
             children: [
-              // CONTEÚDO PRINCIPAL
+              // ✅ GESTUREDETECTOR QUE NÃO BLOQUEIA OS CLIQUES
               GestureDetector(
                 onTap: _resetTimerOnInteraction,
-                behavior: HitTestBehavior.translucent,
-                child: Center(child: widgetOptions.elementAt(_selectedIndex)),
+                onPanDown: (_) => _resetTimerOnInteraction(),
+                onScaleStart: (_) => _resetTimerOnInteraction(),
+                behavior: HitTestBehavior
+                    .deferToChild, // ✅ PERMITE CLIQUES NOS FILHOS
+                child: Container(
+                  color: Colors.transparent,
+                  width: double.infinity,
+                  height: double.infinity,
+                  child: Center(child: widgetOptions.elementAt(_selectedIndex)),
+                ),
               ),
 
               // DIALOG DE SENHA (se necessário)
               if (_showPasswordDialog) _buildPasswordDialog(),
             ],
           ),
-          bottomNavigationBar: GestureDetector(
-            onTap: _resetTimerOnInteraction,
-            behavior: HitTestBehavior.translucent,
-            child: BottomNavigationBar(
-              items: const <BottomNavigationBarItem>[
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.insert_emoticon_rounded),
-                  label: 'Avaliações',
-                ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.task_alt_rounded),
-                  label: 'Feedbacks',
-                ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.bar_chart),
-                  label: 'Estatísticas',
-                ),
-              ],
-              selectedLabelStyle: const TextStyle(
-                fontSize: 16.0,
-                fontWeight: FontWeight.bold,
+          bottomNavigationBar: BottomNavigationBar(
+            items: const <BottomNavigationBarItem>[
+              BottomNavigationBarItem(
+                icon: Icon(Icons.insert_emoticon_rounded),
+                label: 'Avaliações',
               ),
-              unselectedLabelStyle: const TextStyle(fontSize: 14.0),
-              currentIndex: _selectedIndex,
-              selectedItemColor: Colors.green.shade700,
-              onTap: _onItemTapped,
+              BottomNavigationBarItem(
+                icon: Icon(Icons.task_alt_rounded),
+                label: 'Feedbacks',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.bar_chart),
+                label: 'Estatísticas',
+              ),
+            ],
+            selectedLabelStyle: const TextStyle(
+              fontSize: 16.0,
+              fontWeight: FontWeight.bold,
             ),
+            unselectedLabelStyle: const TextStyle(fontSize: 14.0),
+            currentIndex: _selectedIndex,
+            selectedItemColor: Colors.green.shade700,
+            onTap: (index) {
+              _resetTimerOnInteraction();
+              _onItemTapped(index);
+            },
           ),
         );
       },
@@ -1864,6 +2017,13 @@ class _RatingScreenState extends State<RatingScreen> {
   @override
   void initState() {
     super.initState();
+
+    // INICIA O TIMER QUANDO A TELA DE FEEDBACKS É ABERTA
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final appTabsControllerState = context
+          .findAncestorStateOfType<_AppTabsControllerState>();
+      appTabsControllerState?._resetTimerOnInteraction();
+    });
 
     // CORREÇÃO: Inicializa com o valor passado ou usa 0 como padrão.
     _selectedStars = widget.initialRating ?? 0;
@@ -1972,6 +2132,13 @@ class _RatingScreenState extends State<RatingScreen> {
     });
   }
 
+  // ✅ MÉTODO PARA REINICIAR TIMER DO PARENT
+  void _resetParentTimer(BuildContext context) {
+    final appTabsControllerState = context
+        .findAncestorStateOfType<_AppTabsControllerState>();
+    appTabsControllerState?._resetTimerOnInteraction();
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -1996,10 +2163,10 @@ class _RatingScreenState extends State<RatingScreen> {
                     child: Align(
                       alignment: Alignment.center,
                       child: SizedBox(
-                        width: screenWidth * 0.7,
-                        height: screenWidth * 0.7,
+                        width: screenWidth * 0.8,
+                        height: screenWidth * 0.8,
                         child: Image.asset(
-                          'assets/images/costa_feedbacks_logo.png',
+                          'assets/images/costa_foods_feedbacks.png',
                           fit: BoxFit.contain,
                         ),
                       ),
@@ -2063,6 +2230,10 @@ class _RatingScreenState extends State<RatingScreen> {
                       hintText:
                           'Digite aqui suas sugestões, elogios ou críticas...',
                     ),
+                    onChanged: (value) {
+                      // ✅ REINICIA TIMER A CADA CARACTERE DIGITADO
+                      _resetParentTimer(context);
+                    },
                   ),
                 ),
 
@@ -2257,6 +2428,13 @@ class CategoryFeedbackColumn extends StatelessWidget {
     );
   }
 
+  // ✅ MÉTODO PARA REINICIAR TIMER
+  void _resetParentTimer(BuildContext context) {
+    final appTabsControllerState = context
+        .findAncestorStateOfType<_AppTabsControllerState>();
+    appTabsControllerState?._resetTimerOnInteraction();
+  }
+
   // MÉTODO _buildButton RESPONSIVO
   Widget _buildButton({
     required String phrase,
@@ -2297,7 +2475,10 @@ class CategoryFeedbackColumn extends StatelessWidget {
         bottom: screenWidth * 0.02,
       ), // ESPAÇAMENTO RESPONSIVO
       child: GestureDetector(
-        onTap: onTap,
+        onTap: () {
+          _resetParentTimer(context); // ✅ REINICIA TIMER
+          onTap();
+        },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           decoration: BoxDecoration(
@@ -2389,6 +2570,14 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     setState(() {
       _selectedView = view;
     });
+  }
+
+  // ✅ MÉTODO PARA REINICIAR TIMER
+  // ✅ MÉTODO PARA REINICIAR TIMER
+  void _resetTimer() {
+    final appTabsControllerState = context
+        .findAncestorStateOfType<_AppTabsControllerState>();
+    appTabsControllerState?._resetTimerOnInteraction();
   }
 
   String _getDetailCountText(int count) {
@@ -2756,7 +2945,10 @@ class _StatisticsScreenState extends State<StatisticsScreen>
         ],
       ),
       child: ElevatedButton.icon(
-        onPressed: () => _exportDataWithSafety(context),
+        onPressed: () {
+          _resetTimer(); // ✅ REINICIA TIMER
+          _exportDataWithSafety(context);
+        },
         icon: const Icon(Icons.download_rounded),
         label: const Text(
           'Exportar Dados em CSV',
@@ -2892,23 +3084,24 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     Map<int, int> starRatings,
     int totalRatings,
   ) {
-    final total = totalRatings;
+    // ✅ LISTA DE LABELS NA ORDEM CORRETA: Excelente -> Péssimo
+    final List<String> sentimentLabels = [
+      'Excelente',
+      'Bom',
+      'Neutro',
+      'Ruim',
+      'Péssimo',
+    ];
 
     return Center(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
-        children: starRatings.entries
-            .toList()
-            .reversed // INVERTE A ORDEM: 5,4,3,2,1
-            .map((entry) {
-              final int star = entry.key;
-              final int count = entry.value;
-              final double percentage = total > 0 ? (count / total) * 100 : 0;
-
-              final String label = _sentimentLabels[star - 1];
-
-              return Padding(
+        children: [
+          // ✅ PERCORRE NA ORDEM INVERSA: 5, 4, 3, 2, 1
+          for (int star = 5; star >= 1; star--)
+            if (starRatings[star] != null && starRatings[star]! > 0)
+              Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4.0),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -2916,18 +3109,18 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                     Container(
                       width: 20,
                       height: 20,
-                      color: appData.pieColors[star - 1],
+                      color: appData
+                          .pieColors[star - 1], // ✅ CORES MANTIDAS CORRETAS
                       margin: const EdgeInsets.only(right: 20),
                     ),
                     Text(
-                      '$label: ${count}',
+                      '${sentimentLabels[5 - star]}: ${starRatings[star]}', // ✅ NOME CORRETO
                       style: const TextStyle(fontSize: 20),
                     ),
                   ],
                 ),
-              );
-            })
-            .toList(),
+              ),
+        ],
       ),
     );
   }
@@ -3516,7 +3709,7 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                     width: screenWidth * 0.8,
                     height: screenWidth * 0.8,
                     child: Image.asset(
-                      'assets/images/costa_feedbacks_logo.png',
+                      'assets/images/costa_foods_feedbacks.png',
                       fit: BoxFit.contain,
                     ),
                   ),
@@ -3591,115 +3784,123 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                       margin: EdgeInsets.symmetric(
                         vertical: screenHeight * 0.01,
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment
-                            .center, // CENTRALIZA TODO O CONTEÚDO
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        mainAxisSize:
-                            MainAxisSize.min, // IMPEDE QUE OCUPE LARGURA TOTAL
-                        children: [
-                          // EMOJI AGORA CENTRALIZADO E MAIOR
-                          Container(
-                            width: screenWidth * 0.2,
-                            child: IconButton(
-                              onPressed: () => _handleEmojiClick(starValue),
-                              padding: EdgeInsets.zero, // REMOVE PADDING EXTRA
-                              style: ButtonStyle(
-                                side: WidgetStateProperty.all(BorderSide.none),
-                                backgroundColor:
-                                    WidgetStateProperty.resolveWith<Color?>((
-                                      Set<WidgetState> states,
-                                    ) {
-                                      return isSelected
-                                          ? Colors.amber.withOpacity(0.3)
-                                          : Colors.transparent;
-                                    }),
-                                shape: WidgetStateProperty.all<OutlinedBorder>(
-                                  const CircleBorder(),
+                      child: GestureDetector(
+                        // ✅ ADICIONE ESTE GESTUREDETECTOR
+                        onTap: () => _handleEmojiClick(starValue),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment
+                              .center, // CENTRALIZA TODO O CONTEÚDO
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          mainAxisSize: MainAxisSize
+                              .min, // IMPEDE QUE OCUPE LARGURA TOTAL
+                          children: [
+                            // EMOJI AGORA CENTRALIZADO E MAIOR
+                            Container(
+                              width: screenWidth * 0.2,
+                              child: IconButton(
+                                onPressed: () => _handleEmojiClick(starValue),
+                                padding:
+                                    EdgeInsets.zero, // REMOVE PADDING EXTRA
+                                style: ButtonStyle(
+                                  side: WidgetStateProperty.all(
+                                    BorderSide.none,
+                                  ),
+                                  backgroundColor:
+                                      WidgetStateProperty.resolveWith<Color?>((
+                                        Set<WidgetState> states,
+                                      ) {
+                                        return isSelected
+                                            ? Colors.amber.withOpacity(0.3)
+                                            : Colors.transparent;
+                                      }),
+                                  shape:
+                                      WidgetStateProperty.all<OutlinedBorder>(
+                                        const CircleBorder(),
+                                      ),
+                                  overlayColor: WidgetStateProperty.all(
+                                    Colors.transparent,
+                                  ),
                                 ),
-                                overlayColor: WidgetStateProperty.all(
-                                  Colors.transparent,
-                                ),
-                              ),
-                              icon: TweenAnimationBuilder<double>(
-                                tween: Tween<double>(
-                                  begin: 1.0,
-                                  end: isSelected
-                                      ? 1.3
-                                      : 1.0, // AUMENTEI A ANIMAÇÃO DE SELEÇÃO
-                                ),
-                                duration: const Duration(milliseconds: 200),
-                                builder:
-                                    (
-                                      BuildContext context,
-                                      double scale,
-                                      Widget? child,
-                                    ) {
-                                      return Transform.scale(
-                                        scale: scale,
-                                        child: Text(
-                                          currentEmoji,
-                                          style: TextStyle(
-                                            // TAMANHO AUMENTADO E PROPORCIONAL
-                                            fontSize: isSmallScreen
-                                                ? 50 // Aumentado de 40 para 50
-                                                : (isLargeScreen
-                                                      ? 100
-                                                      : 80), // Aumentado de 90/70 para 100/80
+                                icon: TweenAnimationBuilder<double>(
+                                  tween: Tween<double>(
+                                    begin: 1.0,
+                                    end: isSelected
+                                        ? 1.3
+                                        : 1.0, // AUMENTEI A ANIMAÇÃO DE SELEÇÃO
+                                  ),
+                                  duration: const Duration(milliseconds: 200),
+                                  builder:
+                                      (
+                                        BuildContext context,
+                                        double scale,
+                                        Widget? child,
+                                      ) {
+                                        return Transform.scale(
+                                          scale: scale,
+                                          child: Text(
+                                            currentEmoji,
+                                            style: TextStyle(
+                                              // TAMANHO AUMENTADO E PROPORCIONAL
+                                              fontSize: isSmallScreen
+                                                  ? 50 // Aumentado de 40 para 50
+                                                  : (isLargeScreen
+                                                        ? 100
+                                                        : 80), // Aumentado de 90/70 para 100/80
+                                            ),
                                           ),
-                                        ),
-                                      );
-                                    },
+                                        );
+                                      },
+                                ),
                               ),
                             ),
-                          ),
 
-                          SizedBox(width: screenWidth * 0.04),
+                            SizedBox(width: screenWidth * 0.04),
 
-                          // LEGENDA RESPONSIVA
-                          Flexible(
-                            // USA FLEXIBLE EM VEZ DE EXPANDED
-                            child: Consumer<AppData>(
-                              builder: (context, appData, child) {
-                                final starRatings = appData.getTodayStarRatings(
-                                  widget.currentShift,
-                                );
-                                final int count = starRatings[starValue] ?? 0;
+                            // LEGENDA RESPONSIVA
+                            Flexible(
+                              // USA FLEXIBLE EM VEZ DE EXPANDED
+                              child: Consumer<AppData>(
+                                builder: (context, appData, child) {
+                                  final starRatings = appData
+                                      .getTodayStarRatings(widget.currentShift);
+                                  final int count = starRatings[starValue] ?? 0;
 
-                                return Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      legendaAtual,
-                                      style: TextStyle(
-                                        fontSize: isSmallScreen
-                                            ? 18
-                                            : (isLargeScreen ? 32 : 24),
-                                        fontWeight: FontWeight.w500,
-                                        color: isSelected
-                                            ? Colors.black
-                                            : Colors.grey[700],
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        legendaAtual,
+                                        style: TextStyle(
+                                          fontSize: isSmallScreen
+                                              ? 18
+                                              : (isLargeScreen ? 32 : 24),
+                                          fontWeight: FontWeight.w500,
+                                          color: isSelected
+                                              ? Colors.black
+                                              : Colors.grey[700],
+                                        ),
+                                        textAlign: TextAlign.left,
                                       ),
-                                      textAlign: TextAlign.left,
-                                    ),
-                                    Text(
-                                      count == 1
-                                          ? '($count avaliação hoje)'
-                                          : '($count avaliações hoje)',
-                                      style: TextStyle(
-                                        fontSize: isSmallScreen ? 12 : 16,
-                                        color: Colors.grey[600],
-                                        fontStyle: FontStyle.italic,
+                                      Text(
+                                        count == 1
+                                            ? '($count avaliação hoje)'
+                                            : '($count avaliações hoje)',
+                                        style: TextStyle(
+                                          fontSize: isSmallScreen ? 12 : 16,
+                                          color: Colors.grey[600],
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                        textAlign: TextAlign.left,
                                       ),
-                                      textAlign: TextAlign.left,
-                                    ),
-                                  ],
-                                );
-                              },
+                                    ],
+                                  );
+                                },
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     );
                   }),

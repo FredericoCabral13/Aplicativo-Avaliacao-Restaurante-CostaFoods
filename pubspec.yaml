@@ -1,4 +1,4 @@
-name: costa_feedbacks
+name: costa_foods_feedbacks
 description: "Aplicativo para coleta de feedbacks do restaurante da CostaFoods."
 publish_to: "none"
 version: 1.0.0+1
@@ -30,14 +30,14 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/images/costa_feedbacks_logo.png
+    - assets/images/costa_foods_feedbacks.png
 
 flutter_launcher_icons:
   android: true
   ios: false
-  image_path: "assets/icon/costa_feedbacks_logo_fundo_branco.png"
+  image_path: "assets/icon/costa_foods_feedbacks.png"
   adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "assets/icon/costa_feedbacks_logo_fundo_branco.png"
+  adaptive_icon_foreground: "assets/icon/costa_foods_feedbacks.png"
   min_sdk_android: 21
 
 flutter_native_splash:
