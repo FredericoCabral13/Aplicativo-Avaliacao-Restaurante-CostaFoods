@@ -94,6 +94,119 @@ class AppData extends ChangeNotifier {
     Colors.green.shade700,
   ];
 
+  // ✅ VARIÁVEIS PARA FILTRO DE DATA
+  DateTime? _selectedStartDate;
+  DateTime? _selectedEndDate;
+  bool _showDateFilterDialog = false;
+
+  // ✅ GETTERS PARA AS DATAS
+  DateTime? get selectedStartDate => _selectedStartDate;
+  DateTime? get selectedEndDate => _selectedEndDate;
+  bool get showDateFilterDialog => _showDateFilterDialog;
+
+  // ✅ MÉTODO PARA ABRIR O DIALOG DE FILTRO
+  void showDateFilter() {
+    _selectedStartDate = null;
+    _selectedEndDate = null;
+    _showDateFilterDialog = true;
+    notifyListeners();
+  }
+
+  // ✅ MÉTODO PARA SELECIONAR DATA INICIAL
+  void selectStartDate(DateTime date) {
+    _selectedStartDate = date;
+    notifyListeners();
+  }
+
+  // ✅ MÉTODO PARA SELECIONAR DATA FINAL
+  void selectEndDate(DateTime date) {
+    _selectedEndDate = date;
+    notifyListeners();
+  }
+
+  // ✅ MÉTODO PARA DEBUG DOS REGISTROS
+  void _debugRecords() {
+    print('📊 TOTAL DE REGISTROS: ${allEvaluationRecords.length}');
+    for (var record in allEvaluationRecords) {
+      final recordDate = DateTime.parse(record['timestamp']);
+      final recordDay = DateTime(
+        recordDate.year,
+        recordDate.month,
+        recordDate.day,
+      );
+      print('   📅 Record: ${record['timestamp']} -> $recordDay');
+    }
+  }
+
+  // ✅ MÉTODO PARA CONFIRMAR O FILTRO
+  void confirmDateFilter(BuildContext context) {
+    if (_selectedStartDate == null || _selectedEndDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor, selecione ambas as datas.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // ✅ CORREÇÃO: Remove qualquer informação de hora/minuto/segundo
+    final startDay = DateTime(
+      _selectedStartDate!.year,
+      _selectedStartDate!.month,
+      _selectedStartDate!.day,
+    );
+    final endDay = DateTime(
+      _selectedEndDate!.year,
+      _selectedEndDate!.month,
+      _selectedEndDate!.day,
+    );
+
+    print('🔍 VALIDAÇÃO DO FILTRO:');
+    print('   Start Day: $startDay');
+    print('   End Day: $endDay');
+    print('   End is before Start: ${endDay.isBefore(startDay)}');
+
+    if (endDay.isBefore(startDay)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('A data final não pode ser anterior à data inicial.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    _showDateFilterDialog = false;
+    notifyListeners();
+
+    // Mostra informações do filtro aplicado
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Filtrando de ${_formatDate(startDay)} até ${_formatDate(endDay)}',
+          ),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+
+    _debugRecords();
+    _exportWithDateFilter(context);
+    // Exporta o CSV com o filtro aplicado
+    _exportWithDateFilter(context);
+  }
+
+  // ✅ MÉTODO PARA CANCELAR O FILTRO
+  void cancelDateFilter() {
+    _selectedStartDate = null;
+    _selectedEndDate = null;
+    _showDateFilterDialog = false;
+    notifyListeners();
+  }
+
   // Construtor: Chama o método de carregamento ao inicializar
   AppData() {
     Future.microtask(() => _initializeApp());
@@ -642,51 +755,38 @@ class AppData extends ChangeNotifier {
   String? _lastSavedPath; // Guardar o último caminho salvo
 
   // MÉTODO PARA SALVAR EM PASTA VISÍVEL (CORRIGIDO)
+  // ✅ MÉTODO PARA EXPORTAR COM FILTRO DE DATA
   Future<void> exportCSV(BuildContext context) async {
     try {
-      final csvData = await _generateCSVContent();
+      // Mostra o dialog de seleção de datas primeiro
+      _showDateFilterDialog = true;
+      notifyListeners();
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao exportar: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
-      // USA Navigator.push para garantir que o pop-up seja gerenciado corretamente
+  // ✅ NOVO MÉTODO PARA EXPORTAR COM FILTRO APLICADO
+  Future<void> _exportWithDateFilter(BuildContext context) async {
+    try {
+      final csvData = await _generateFilteredCSVContent();
+
+      // ✅ USA UMA CLASSE COM TIMEOUT PARA O DIALOG
       await showDialog<int>(
         context: context,
-        barrierDismissible: true, // PERMITE FECHAR CLICANDO FORA
-        builder: (context) => AlertDialog(
-          title: const Text('Exportar Dados'),
-          content: const Text('Escolha como deseja exportar o arquivo CSV:'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(1); // FECHA O DIALOG
-                _saveToDownloads(context, csvData);
-              },
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.save, color: Colors.blue),
-                  SizedBox(width: 8),
-                  Text('Salvar no dispositivo'),
-                ],
-              ),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(2); // FECHA O DIALOG
-                _shareFile(context, csvData);
-              },
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.share, color: Colors.green),
-                  SizedBox(width: 8),
-                  Text('Compartilhar'),
-                ],
-              ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(0), // FECHA O DIALOG
-              child: const Text('Cancelar'),
-            ),
-          ],
+        barrierDismissible: true,
+        builder: (context) => _ExportOptionsDialogWithTimeout(
+          appData: this,
+          csvData: csvData,
+          startDate: _selectedStartDate!,
+          endDate: _selectedEndDate!,
         ),
       );
     } catch (e) {
@@ -699,6 +799,102 @@ class AppData extends ChangeNotifier {
         );
       }
     }
+  }
+
+  // ✅ GERAR CONTEÚDO CSV FILTRADO POR DATA
+  Future<String> _generateFilteredCSVContent() async {
+    final List<List<dynamic>> csvData = [];
+
+    csvData.add([
+      'Unidade',
+      'Data/Hora',
+      'Turno',
+      'Avaliação',
+      'Categoria',
+      'Status de Satisfação',
+      'Feedbacks Positivos',
+      'Feedbacks Negativos',
+      'Comentário',
+    ]);
+
+    // ✅ DEBUG: Mostrar informações do filtro
+    print('🎯 FILTRO APLICADO:');
+    print('   Data Inicial: $_selectedStartDate');
+    print('   Data Final: $_selectedEndDate');
+
+    for (var record in allEvaluationRecords) {
+      final recordDate = DateTime.parse(record['timestamp']);
+      final recordDay = DateTime(
+        recordDate.year,
+        recordDate.month,
+        recordDate.day,
+      );
+
+      // ✅ APLICA FILTRO CORRETAMENTE
+      if (_selectedStartDate != null && _selectedEndDate != null) {
+        // Converte as datas selecionadas para o início do dia
+        final startDay = DateTime(
+          _selectedStartDate!.year,
+          _selectedStartDate!.month,
+          _selectedStartDate!.day,
+        );
+        final endDay = DateTime(
+          _selectedEndDate!.year,
+          _selectedEndDate!.month,
+          _selectedEndDate!.day,
+        );
+
+        // ✅ VERIFICAÇÃO CORRETA: recordDay deve ser >= startDay E <= endDay
+        final isAfterOrEqualStart =
+            recordDay.isAfter(startDay) || _isSameDay(recordDay, startDay);
+        final isBeforeOrEqualEnd =
+            recordDay.isBefore(endDay) || _isSameDay(recordDay, endDay);
+
+        final shouldInclude = isAfterOrEqualStart && isBeforeOrEqualEnd;
+
+        // Debug para cada registro
+        print(
+          '   📅 Record: $recordDay | Start: $startDay | End: $endDay | Include: $shouldInclude',
+        );
+
+        if (!shouldInclude) {
+          continue; // Pula registros fora do intervalo
+        }
+      }
+
+      final int stars = record['estrelas'] as int;
+      final category = getCategoryName(stars);
+      final turno = record['turno'] == 1 ? 'Manhã/Tarde' : 'Noite/Madrugada';
+      final String satisfactionStatus =
+          record['satisfacao']?.toString() ?? _getSatisfactionStatus(stars);
+
+      csvData.add([
+        getFullUnitName(),
+        record['timestamp'],
+        turno,
+        '${record['estrelas']} estrelas ($category)',
+        category,
+        satisfactionStatus,
+        record['positivos'],
+        record['negativos'],
+        record['comentario'] ?? '',
+      ]);
+    }
+
+    print('✅ Filtro finalizado: ${csvData.length - 1} registros incluídos');
+    return const ListToCsvConverter().convert(csvData);
+  }
+
+  // ✅ MÉTODO AUXILIAR PARA COMPARAR SE É O MESMO DIA
+  bool _isSameDay(DateTime date1, DateTime date2) {
+    return date1.year == date2.year &&
+        date1.month == date2.month &&
+        date1.day == date2.day;
+  }
+
+  // ✅ FORMATAR DATA PARA EXIBIÇÃO
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
 
   // SALVAR DIRETO NO DISPOSITIVO
@@ -1289,6 +1485,144 @@ Arquivo contém dados completos das avaliações dos clientes.
   }
 }
 
+// ✅ CLASSE PARA DIALOG DE OPÇÕES DE EXPORTAÇÃO COM TIMEOUT
+class _ExportOptionsDialogWithTimeout extends StatefulWidget {
+  final AppData appData;
+  final String csvData;
+  final DateTime startDate;
+  final DateTime endDate;
+
+  const _ExportOptionsDialogWithTimeout({
+    required this.appData,
+    required this.csvData,
+    required this.startDate,
+    required this.endDate,
+  });
+
+  @override
+  State<_ExportOptionsDialogWithTimeout> createState() =>
+      _ExportOptionsDialogWithTimeoutState();
+}
+
+class _ExportOptionsDialogWithTimeoutState
+    extends State<_ExportOptionsDialogWithTimeout> {
+  Timer? _inactivityTimer;
+  final Duration _inactivityDuration = const Duration(seconds: 20);
+
+  @override
+  void initState() {
+    super.initState();
+    _startInactivityTimer();
+  }
+
+  @override
+  void dispose() {
+    _inactivityTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startInactivityTimer() {
+    _inactivityTimer?.cancel();
+    _inactivityTimer = Timer(_inactivityDuration, () {
+      if (mounted) {
+        _closeDueToInactivity();
+      }
+    });
+  }
+
+  void _resetTimerOnInteraction() {
+    _startInactivityTimer();
+  }
+
+  void _closeDueToInactivity() {
+    if (mounted) {
+      Navigator.of(context).pop(); // Fecha o dialog
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Exportação cancelada por inatividade'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  void _handleSaveToDevice() {
+    _resetTimerOnInteraction();
+    Navigator.of(context).pop(1);
+    widget.appData._saveToDownloads(context, widget.csvData);
+  }
+
+  void _handleShare() {
+    _resetTimerOnInteraction();
+    Navigator.of(context).pop(2);
+    widget.appData._shareFile(context, widget.csvData);
+  }
+
+  void _handleCancel() {
+    _resetTimerOnInteraction();
+    Navigator.of(context).pop(0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _resetTimerOnInteraction,
+      onPanDown: (_) => _resetTimerOnInteraction(),
+      behavior: HitTestBehavior.deferToChild,
+      child: AlertDialog(
+        title: const Text('Exportar Dados'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Exportando dados de ${_formatDate(widget.startDate)} até ${_formatDate(widget.endDate)}',
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Esta tela fechará automaticamente em 20 segundos',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+                fontStyle: FontStyle.italic,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: _handleSaveToDevice,
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.save, color: Colors.blue),
+                SizedBox(width: 8),
+                Text('Salvar no dispositivo'),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: _handleShare,
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.share, color: Colors.green),
+                SizedBox(width: 8),
+                Text('Compartilhar'),
+              ],
+            ),
+          ),
+          TextButton(onPressed: _handleCancel, child: const Text('Cancelar')),
+        ],
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+}
+
 // ===================================================================
 // WIDGET PRINCIPAL E CONTROLADOR DE ABAS
 // ===================================================================
@@ -1334,6 +1668,10 @@ class AppWithUnitSelection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<AppData>(
       builder: (context, appData, child) {
+        // ✅ SE PRECISA MOSTRAR O FILTRO DE DATAS
+        if (appData.showDateFilterDialog) {
+          return _buildDateFilterDialog(context, appData);
+        }
         // ✅ SE PRECISA MOSTRAR A SELEÇÃO DE UNIFORME
         if (appData.showUniformSelection) {
           return _buildUniformSelectionDialog(context, appData);
@@ -1550,6 +1888,415 @@ class AppWithUnitSelection extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  // ✅ ADICIONE ESTE MÉTODO NO AppWithUnitSelection
+  Widget _buildDateFilterDialog(BuildContext context, AppData appData) {
+    final now = DateTime.now();
+    final firstDate = now.subtract(const Duration(days: 365)); // 1 ano atrás
+    final lastDate = now; // até hoje
+
+    return _DateFilterDialogWithTimeout(
+      appData: appData,
+      now: now,
+      firstDate: firstDate,
+      lastDate: lastDate,
+    );
+  }
+}
+
+// ✅ NOVA CLASSE PARA DIALOG DE DATA COM TIMEOUT
+class _DateFilterDialogWithTimeout extends StatefulWidget {
+  final AppData appData;
+  final DateTime now;
+  final DateTime firstDate;
+  final DateTime lastDate;
+
+  const _DateFilterDialogWithTimeout({
+    required this.appData,
+    required this.now,
+    required this.firstDate,
+    required this.lastDate,
+  });
+
+  @override
+  State<_DateFilterDialogWithTimeout> createState() =>
+      _DateFilterDialogWithTimeoutState();
+}
+
+class _DateFilterDialogWithTimeoutState
+    extends State<_DateFilterDialogWithTimeout> {
+  Timer? _inactivityTimer;
+  final Duration _inactivityDuration = const Duration(seconds: 20);
+
+  @override
+  void initState() {
+    super.initState();
+    _startInactivityTimer();
+  }
+
+  @override
+  void dispose() {
+    _inactivityTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startInactivityTimer() {
+    _inactivityTimer?.cancel();
+    _inactivityTimer = Timer(_inactivityDuration, () {
+      if (mounted) {
+        _closeDueToInactivity();
+      }
+    });
+  }
+
+  void _resetTimerOnInteraction() {
+    _startInactivityTimer();
+  }
+
+  void _closeDueToInactivity() {
+    // Fecha o dialog de filtro de data
+    widget.appData.cancelDateFilter();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Seleção de data cancelada por inatividade'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _resetTimerOnInteraction,
+      onPanDown: (_) => _resetTimerOnInteraction(),
+      behavior: HitTestBehavior.deferToChild,
+      child: Scaffold(
+        backgroundColor: Colors.black54,
+        body: Center(
+          child: Container(
+            width: MediaQuery.of(context).size.width * 0.5,
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.calendar_today,
+                  size: 64,
+                  color: const Color.fromARGB(255, 111, 136, 63),
+                ),
+                const SizedBox(height: 16),
+
+                Text(
+                  'Filtrar por Data',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: const Color.fromARGB(255, 111, 136, 63),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+
+                const SizedBox(height: 8),
+
+                Text(
+                  'Selecione o período para exportar:',
+                  style: TextStyle(fontSize: 16, color: Colors.grey[700]),
+                  textAlign: TextAlign.center,
+                ),
+
+                const SizedBox(height: 24),
+
+                // ✅ DATA INICIAL
+                GestureDetector(
+                  onTap: _resetTimerOnInteraction,
+                  child: ListTile(
+                    leading: const Icon(
+                      Icons.calendar_today,
+                      color: Colors.green,
+                    ),
+                    title: const Text('Data Inicial'),
+                    subtitle: Text(
+                      widget.appData.selectedStartDate != null
+                          ? _formatDate(widget.appData.selectedStartDate!)
+                          : 'Selecionar data',
+                    ),
+                    onTap: () async {
+                      _resetTimerOnInteraction();
+                      final selectedDate = await showDatePicker(
+                        context: context,
+                        initialDate:
+                            widget.appData.selectedStartDate ??
+                            DateTime.now().subtract(const Duration(days: 7)),
+                        firstDate: DateTime.now().subtract(
+                          const Duration(days: 365),
+                        ),
+                        lastDate: DateTime.now(),
+                      );
+                      if (selectedDate != null) {
+                        widget.appData.selectStartDate(selectedDate);
+                        _resetTimerOnInteraction();
+                      }
+                    },
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                GestureDetector(
+                  onTap: _resetTimerOnInteraction,
+                  child: ListTile(
+                    leading: const Icon(Icons.event, color: Colors.red),
+                    title: const Text('Data Final'),
+                    subtitle: Text(
+                      widget.appData.selectedEndDate != null
+                          ? _formatDate(widget.appData.selectedEndDate!)
+                          : 'Selecionar data',
+                    ),
+                    onTap: () async {
+                      _resetTimerOnInteraction();
+                      final selectedDate = await showDatePicker(
+                        context: context,
+                        initialDate:
+                            widget.appData.selectedEndDate ?? DateTime.now(),
+                        firstDate:
+                            widget.appData.selectedStartDate ??
+                            DateTime.now().subtract(const Duration(days: 365)),
+                        lastDate: DateTime.now(),
+                      );
+                      if (selectedDate != null) {
+                        widget.appData.selectEndDate(selectedDate);
+                        _resetTimerOnInteraction();
+                      }
+                    },
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // ✅ BOTÕES DE AÇÃO
+                Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          _resetTimerOnInteraction();
+                          widget.appData.cancelDateFilter();
+                        },
+                        child: OutlinedButton(
+                          onPressed: () {
+                            _resetTimerOnInteraction();
+                            widget.appData.cancelDateFilter();
+                          },
+                          child: const Text('Cancelar'),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: _resetTimerOnInteraction,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            _resetTimerOnInteraction();
+                            widget.appData.confirmDateFilter(context);
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color.fromARGB(
+                              255,
+                              111,
+                              136,
+                              63,
+                            ),
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Text('Confirmar'),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // ✅ INDICADOR DE TIMEOUT
+                const SizedBox(height: 16),
+                Text(
+                  'Esta tela fechará automaticamente em 20 segundos',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                    fontStyle: FontStyle.italic,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ✅ MÉTODO AUXILIAR PARA FORMATAR DATA
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+}
+
+// ✅ CLASSE PARA DIALOG DE EXPORTAÇÃO COM TIMEOUT
+class _ExportDialogWithTimeout extends StatefulWidget {
+  final AppData appData;
+  final String csvData;
+  final DateTime startDate;
+  final DateTime endDate;
+
+  const _ExportDialogWithTimeout({
+    required this.appData,
+    required this.csvData,
+    required this.startDate,
+    required this.endDate,
+  });
+
+  @override
+  State<_ExportDialogWithTimeout> createState() =>
+      _ExportDialogWithTimeoutState();
+}
+
+class _ExportDialogWithTimeoutState extends State<_ExportDialogWithTimeout> {
+  Timer? _inactivityTimer;
+  final Duration _inactivityDuration = const Duration(seconds: 20);
+
+  @override
+  void initState() {
+    super.initState();
+    _startInactivityTimer();
+  }
+
+  @override
+  void dispose() {
+    _inactivityTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startInactivityTimer() {
+    _inactivityTimer?.cancel();
+    _inactivityTimer = Timer(_inactivityDuration, () {
+      if (mounted) {
+        _closeDueToInactivity();
+      }
+    });
+  }
+
+  void _resetTimerOnInteraction() {
+    _startInactivityTimer();
+  }
+
+  void _closeDueToInactivity() {
+    if (mounted) {
+      Navigator.of(context).pop(); // Fecha o dialog
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Exportação cancelada por inatividade'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  void _saveToDownloads(BuildContext context) {
+    _resetTimerOnInteraction();
+    widget.appData._saveToDownloads(context, widget.csvData);
+    Navigator.of(context).pop();
+  }
+
+  void _shareFile(BuildContext context) {
+    _resetTimerOnInteraction();
+    widget.appData._shareFile(context, widget.csvData);
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _resetTimerOnInteraction,
+      onPanDown: (_) => _resetTimerOnInteraction(),
+      behavior: HitTestBehavior.deferToChild,
+      child: AlertDialog(
+        title: const Text('Exportar Dados'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Exportando dados de ${_formatDate(widget.startDate)} até ${_formatDate(widget.endDate)}',
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Esta tela fechará automaticamente em 20 segundos',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+                fontStyle: FontStyle.italic,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              _resetTimerOnInteraction();
+              _saveToDownloads(context);
+            },
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.save, color: Colors.blue),
+                SizedBox(width: 8),
+                Text('Salvar no dispositivo'),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              _resetTimerOnInteraction();
+              _shareFile(context);
+            },
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.share, color: Colors.green),
+                SizedBox(width: 8),
+                Text('Compartilhar'),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              _resetTimerOnInteraction();
+              Navigator.of(context).pop();
+            },
+            child: const Text('Cancelar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
 }
 
@@ -2970,7 +3717,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     Navigator.of(context).popUntil((route) => route.isFirst);
 
     final appData = Provider.of<AppData>(context, listen: false);
-    appData.exportCSV(context);
+    appData.exportCSV(
+      context,
+    ); // ✅ AGORA ISSO ABRIRÁ O FILTRO DE DATAS PRIMEIRO
   }
 
   void _exportData(BuildContext context) {
@@ -3758,8 +4507,11 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                     },
                   ),
 
-                  SizedBox(height: screenHeight * 0.04),
-
+                  SizedBox(
+                    height:
+                        screenHeight *
+                        0.01, //alterar distância entre data e emojis
+                  ),
                   // EMOJIS NA ORDEM INVERTIDA: EXCELENTE (5) → PÉSSIMO (1)
                   ...List.generate(5, (index) {
                     // INVERTE A ORDEM: 5,4,3,2,1 em vez de 1,2,3,4,5
