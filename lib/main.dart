@@ -2330,6 +2330,12 @@ class _AppTabsControllerState extends State<AppTabsController> {
   Timer? _keyboardInactivityTimer;
   final Duration _keyboardInactivityDuration = const Duration(seconds: 5);
 
+  // ✅ NOVAS VARIÁVEIS PARA O POP-UP DE CONFIRMAÇÃO
+  bool _showInactivityDialog = false;
+  Timer? _countdownTimer;
+  int _countdownSeconds = 10;
+  final Duration _countdownDuration = const Duration(seconds: 10);
+
   // 1. Lógica para determinar o turno padrão baseado no horário atual
   int _calculateDefaultShift() {
     final hour = DateTime.now().hour;
@@ -2355,6 +2361,7 @@ class _AppTabsControllerState extends State<AppTabsController> {
     _inactivityTimer?.cancel();
     _keyboardInactivityTimer?.cancel();
     _passwordController.dispose(); // DISPOSE DO CONTROLLER
+    _countdownTimer?.cancel(); // ✅ CANCELA TIMER DO CONTADOR
     super.dispose();
   }
 
@@ -2362,27 +2369,77 @@ class _AppTabsControllerState extends State<AppTabsController> {
   void _startInactivityTimer() {
     _inactivityTimer?.cancel();
     _inactivityTimer = Timer(_inactivityDuration, () {
-      // VOLTA PARA TELA INICIAL MESMO COM DIALOG ABERTO
-      if ((_selectedIndex != 0 || _showPasswordDialog) && mounted) {
+      // ✅ SE ESTÁ NA TELA DE FEEDBACKS OU ESTATÍSTICAS, MOSTRA POP-UP
+      if ((_selectedIndex == 1 || _selectedIndex == 2) && mounted) {
+        _showInactivityConfirmation();
+      } else if (_selectedIndex != 0 && mounted) {
+        // Para outras telas (se houver), volta diretamente
         _resetToHomeScreen();
       }
     });
   }
 
+  // ✅ MOSTRA O POP-UP DE CONFIRMAÇÃO DE INATIVIDADE
+  void _showInactivityConfirmation() {
+    setState(() {
+      _showInactivityDialog = true;
+      _countdownSeconds = 10;
+    });
+
+    // ✅ INICIA O CONTADOR REGRESSIVO
+    _startCountdownTimer();
+  }
+
+  // ✅ INICIA O CONTADOR REGRESSIVO
+  void _startCountdownTimer() {
+    _countdownTimer?.cancel();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_countdownSeconds > 0 && mounted) {
+        setState(() {
+          _countdownSeconds--;
+        });
+      } else {
+        // ✅ TEMPO ESGOTADO - VOLTA PARA TELA INICIAL
+        timer.cancel();
+        _closeInactivityDialogAndReturnHome();
+      }
+    });
+  }
+
+  // ✅ USUÁRIO QUER PERMANECER
+  void _stayOnCurrentScreen() {
+    _closeInactivityDialog();
+    _resetTimerOnInteraction(); // Reinicia o timer principal
+  }
+
+  // ✅ USUÁRIO QUER VOLTAR (OU TEMPO ESGOTOU)
+  void _closeInactivityDialogAndReturnHome() {
+    _closeInactivityDialog();
+    _resetToHomeScreen();
+  }
+
+  // ✅ FECHA O DIALOG
+  void _closeInactivityDialog() {
+    _countdownTimer?.cancel();
+    setState(() {
+      _showInactivityDialog = false;
+      _countdownSeconds = 10;
+    });
+  }
+
   // VOLTA PARA TELA INICIAL (COM FECHAMENTO DE DIALOGS)
   void _resetToHomeScreen() {
-    // FECHA TODOS OS DIALOGS E POP-UPS PRIMEIRO
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
-    }
+    _closeInactivityDialog(); // ✅ FECHA O DIALOG SE ESTIVER ABERTO
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    ScaffoldMessenger.of(context).clearSnackBars();
 
     // CANCELA TIMERS
-    _keyboardInactivityTimer?.cancel();
+    // _keyboardInactivityTimer?.cancel();
 
-    // LIMPA CONTROLLER DE SENHA
-    _passwordController.clear();
+    // // LIMPA CONTROLLER DE SENHA
+    // _passwordController.clear();
 
-    ScaffoldMessenger.of(context).clearSnackBars();
+    // ScaffoldMessenger.of(context).clearSnackBars();
 
     setState(() {
       _selectedIndex = 0;
@@ -2391,12 +2448,12 @@ class _AppTabsControllerState extends State<AppTabsController> {
       _initialTabIndex = null;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Voltando para tela inicial por inatividade'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+    // ScaffoldMessenger.of(context).showSnackBar(
+    //   const SnackBar(
+    //     content: Text('Voltando para tela inicial por inatividade'),
+    //     duration: Duration(seconds: 2),
+    //   ),
+    // );
   }
 
   // MÈTODO PÚBLICO
@@ -2406,6 +2463,12 @@ class _AppTabsControllerState extends State<AppTabsController> {
 
   // MÉTODO PRIVADO TAMBÉM
   void _resetTimerOnInteraction() {
+    // ✅ SE HÁ DIALOG DE INATIVIDADE ABERTO, FECHA E REINICIA
+    if (_showInactivityDialog) {
+      _closeInactivityDialog();
+    }
+
+    _inactivityTimer?.cancel();
     _startInactivityTimer();
   }
 
@@ -2620,7 +2683,146 @@ class _AppTabsControllerState extends State<AppTabsController> {
     );
   }
 
-  @override
+  // ✅ CONSTRÓI O DIALOG DE CONFIRMAÇÃO DE INATIVIDADE
+  Widget _buildInactivityConfirmationDialog() {
+    return Container(
+      color: Colors.black54,
+      child: Center(
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.8,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ✅ ÍCONE DE ALERTA
+              Icon(
+                Icons.timer_outlined,
+                size: 64,
+                color: Colors.orange.shade700,
+              ),
+              const SizedBox(height: 16),
+
+              // ✅ TÍTULO
+              Text(
+                'Tempo de Inatividade',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange.shade700,
+                ),
+                textAlign: TextAlign.center,
+              ),
+
+              const SizedBox(height: 12),
+
+              // ✅ MENSAGEM
+              Text(
+                'Você está há algum tempo sem interagir. Deseja continuar na tela de feedbacks?',
+                style: const TextStyle(fontSize: 16, color: Colors.black87),
+                textAlign: TextAlign.center,
+              ),
+
+              const SizedBox(height: 20),
+
+              // ✅ CONTADOR REGRESSIVO
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 8,
+                  horizontal: 16,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Text(
+                  'Voltando em $_countdownSeconds segundos...',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: _countdownSeconds <= 5
+                        ? Colors.red
+                        : Colors.orange.shade700,
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // ✅ BOTÕES DE AÇÃO
+              Row(
+                children: [
+                  // ✅ BOTÃO "NÃO" (VOLTAR)
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _closeInactivityDialogAndReturnHome,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        side: const BorderSide(color: Colors.red),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: const Text(
+                        'Não, Voltar',
+                        style: TextStyle(fontSize: 16),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(width: 12),
+
+                  // ✅ BOTÃO "SIM" (PERMANECER)
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _stayOnCurrentScreen,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color.fromARGB(
+                          255,
+                          111,
+                          136,
+                          63,
+                        ),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: const Text(
+                        'Sim, Permanecer',
+                        style: TextStyle(fontSize: 16),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 8),
+
+              // ✅ INFORMAÇÃO
+              Text(
+                'Se não responder, voltaremos automaticamente.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade600,
+                  fontStyle: FontStyle.italic,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final List<Widget> widgetOptions = <Widget>[
@@ -2690,6 +2892,11 @@ class _AppTabsControllerState extends State<AppTabsController> {
 
               // DIALOG DE SENHA (se necessário)
               if (_showPasswordDialog) _buildPasswordDialog(),
+
+              // ✅ NOVO: DIALOG DE INATIVIDADE (apenas na tela de feedbacks)
+              if (_showInactivityDialog &&
+                  (_selectedIndex == 1 || _selectedIndex == 2))
+                _buildInactivityConfirmationDialog(),
             ],
           ),
           bottomNavigationBar: BottomNavigationBar(
@@ -4409,12 +4616,13 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
   int _selectedStars = 0;
 
   // EMOJIS NA ORDEM CORRETA PARA A NOVA SEQUÊNCIA
-  final List<String> _ratingEmojis = const ['😍', '🙂', '😐', '😟', '😠'];
-  // 😍 = Excelente (5)
-  // 🙂 = Bom (4)
-  // 😐 = Neutro (3)
-  // 😟 = Ruim (2)
-  // 😠 = Péssimo (1)
+  final List<String> _ratingImagePaths = [
+    'assets/images/love.png', // 😍
+    'assets/images/happy.png', // 🙂
+    'assets/images/neutral.png', // 😐
+    'assets/images/sad.png', // 😟
+    'assets/images/angry.png', // 😠
+  ];
 
   @override
   void initState() {
@@ -4519,7 +4727,7 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                         5 -
                         index; // Excelente=5, Bom=4, Neutro=3, Ruim=2, Péssimo=1
                     final String currentEmoji =
-                        _ratingEmojis[index]; // USA O ÍNDICE DIRETO
+                        _ratingImagePaths[index]; // USA O ÍNDICE DIRETO
                     final bool isSelected = starValue == _selectedStars;
 
                     final List<String> legendas = [
@@ -4532,127 +4740,137 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                     final String legendaAtual = legendas[index];
 
                     return Container(
-                      width: screenWidth * 0.9, // LARGURA CONTROLADA
+                      width: screenWidth * 0.9,
                       margin: EdgeInsets.symmetric(
-                        vertical: screenHeight * 0.01,
+                        vertical: screenHeight * 0.02,
                       ),
-                      child: GestureDetector(
-                        // ✅ ADICIONE ESTE GESTUREDETECTOR
-                        onTap: () => _handleEmojiClick(starValue),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment
-                              .center, // CENTRALIZA TODO O CONTEÚDO
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          mainAxisSize: MainAxisSize
-                              .min, // IMPEDE QUE OCUPE LARGURA TOTAL
-                          children: [
-                            // EMOJI AGORA CENTRALIZADO E MAIOR
-                            Container(
-                              width: screenWidth * 0.2,
-                              child: IconButton(
-                                onPressed: () => _handleEmojiClick(starValue),
-                                padding:
-                                    EdgeInsets.zero, // REMOVE PADDING EXTRA
-                                style: ButtonStyle(
-                                  side: WidgetStateProperty.all(
-                                    BorderSide.none,
-                                  ),
-                                  backgroundColor:
-                                      WidgetStateProperty.resolveWith<Color?>((
-                                        Set<WidgetState> states,
-                                      ) {
-                                        return isSelected
-                                            ? Colors.amber.withOpacity(0.3)
-                                            : Colors.transparent;
-                                      }),
-                                  shape:
-                                      WidgetStateProperty.all<OutlinedBorder>(
-                                        const CircleBorder(),
-                                      ),
-                                  overlayColor: WidgetStateProperty.all(
-                                    Colors.transparent,
-                                  ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // ✅ CONTAINER DA IMAGEM (USA starValue CORRETA)
+                          Container(
+                            width: screenWidth * 0.2,
+                            child: IconButton(
+                              onPressed: () => _handleEmojiClick(starValue),
+                              padding: EdgeInsets.zero,
+                              style: ButtonStyle(
+                                side: WidgetStateProperty.all(BorderSide.none),
+                                backgroundColor:
+                                    WidgetStateProperty.resolveWith<Color?>((
+                                      states,
+                                    ) {
+                                      return isSelected
+                                          ? Colors.amber.withOpacity(0.2)
+                                          : Colors.transparent;
+                                    }),
+                                shape: WidgetStateProperty.all<OutlinedBorder>(
+                                  const CircleBorder(),
                                 ),
-                                icon: TweenAnimationBuilder<double>(
-                                  tween: Tween<double>(
-                                    begin: 1.0,
-                                    end: isSelected
-                                        ? 1.3
-                                        : 1.0, // AUMENTEI A ANIMAÇÃO DE SELEÇÃO
-                                  ),
-                                  duration: const Duration(milliseconds: 200),
-                                  builder:
-                                      (
-                                        BuildContext context,
-                                        double scale,
-                                        Widget? child,
-                                      ) {
-                                        return Transform.scale(
+                                overlayColor: WidgetStateProperty.all(
+                                  Colors.transparent,
+                                ),
+                              ),
+                              icon: TweenAnimationBuilder<double>(
+                                tween: Tween<double>(
+                                  begin: 1.0,
+                                  end: isSelected ? 1.3 : 1.0,
+                                ),
+                                duration: const Duration(milliseconds: 300),
+                                builder:
+                                    (
+                                      BuildContext context,
+                                      double scale,
+                                      Widget? child,
+                                    ) {
+                                      return Container(
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          boxShadow: isSelected
+                                              ? [
+                                                  BoxShadow(
+                                                    color: Colors.amber
+                                                        .withOpacity(0.4),
+                                                    blurRadius: 15,
+                                                    spreadRadius: 3,
+                                                  ),
+                                                ]
+                                              : [
+                                                  BoxShadow(
+                                                    color: Colors.black
+                                                        .withOpacity(0.1),
+                                                    blurRadius: 8,
+                                                    offset: const Offset(0, 3),
+                                                  ),
+                                                ],
+                                        ),
+                                        child: Transform.scale(
                                           scale: scale,
-                                          child: Text(
-                                            currentEmoji,
-                                            style: TextStyle(
-                                              // TAMANHO AUMENTADO E PROPORCIONAL
-                                              fontSize: isSmallScreen
-                                                  ? 50 // Aumentado de 40 para 50
-                                                  : (isLargeScreen
-                                                        ? 100
-                                                        : 80), // Aumentado de 90/70 para 100/80
-                                            ),
+                                          child: Image.asset(
+                                            _ratingImagePaths[index], // ✅ USA index DIRETO (0-4)
+                                            width: isSmallScreen
+                                                ? 60
+                                                : (isLargeScreen ? 120 : 90),
+                                            height: isSmallScreen
+                                                ? 60
+                                                : (isLargeScreen ? 120 : 90),
+                                            fit: BoxFit.contain,
                                           ),
-                                        );
-                                      },
-                                ),
+                                        ),
+                                      );
+                                    },
                               ),
                             ),
+                          ),
 
-                            SizedBox(width: screenWidth * 0.04),
+                          SizedBox(width: screenWidth * 0.04),
 
-                            // LEGENDA RESPONSIVA
-                            Flexible(
-                              // USA FLEXIBLE EM VEZ DE EXPANDED
-                              child: Consumer<AppData>(
-                                builder: (context, appData, child) {
-                                  final starRatings = appData
-                                      .getTodayStarRatings(widget.currentShift);
-                                  final int count = starRatings[starValue] ?? 0;
+                          // ✅ LEGENDA (USA starValue CORRETA PARA BUSCAR CONTAGEM)
+                          Flexible(
+                            child: Consumer<AppData>(
+                              builder: (context, appData, child) {
+                                final starRatings = appData.getTodayStarRatings(
+                                  widget.currentShift,
+                                );
+                                final int count =
+                                    starRatings[starValue] ??
+                                    0; // ✅ USA starValue CORRETA
 
-                                  return Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        legendaAtual,
-                                        style: TextStyle(
-                                          fontSize: isSmallScreen
-                                              ? 18
-                                              : (isLargeScreen ? 32 : 24),
-                                          fontWeight: FontWeight.w500,
-                                          color: isSelected
-                                              ? Colors.black
-                                              : Colors.grey[700],
-                                        ),
-                                        textAlign: TextAlign.left,
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      legendaAtual,
+                                      style: TextStyle(
+                                        fontSize: isSmallScreen
+                                            ? 18
+                                            : (isLargeScreen ? 32 : 24),
+                                        fontWeight: FontWeight.w500,
+                                        color: isSelected
+                                            ? Colors.black
+                                            : Colors.grey[700],
                                       ),
-                                      Text(
-                                        count == 1
-                                            ? '($count avaliação hoje)'
-                                            : '($count avaliações hoje)',
-                                        style: TextStyle(
-                                          fontSize: isSmallScreen ? 12 : 16,
-                                          color: Colors.grey[600],
-                                          fontStyle: FontStyle.italic,
-                                        ),
-                                        textAlign: TextAlign.left,
+                                      textAlign: TextAlign.left,
+                                    ),
+                                    Text(
+                                      count == 1
+                                          ? '($count avaliação hoje)'
+                                          : '($count avaliações hoje)',
+                                      style: TextStyle(
+                                        fontSize: isSmallScreen ? 12 : 16,
+                                        color: Colors.grey[600],
+                                        fontStyle: FontStyle.italic,
                                       ),
-                                    ],
-                                  );
-                                },
-                              ),
+                                      textAlign: TextAlign.left,
+                                    ),
+                                  ],
+                                );
+                              },
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     );
                   }),

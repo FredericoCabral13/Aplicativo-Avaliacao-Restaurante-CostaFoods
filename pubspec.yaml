@@ -20,8 +20,7 @@ dependencies:
   flutter_native_splash: ^2.4.7
   share_plus: ^7.2.1  # Para compartilhar arquivos
   url_launcher: ^6.2.2  # Para abrir gerenciador de arquivos
-  #file_picker: ^7.0.1  # Para escolher diretório
-
+  
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -31,6 +30,11 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/costa_foods_feedbacks.png
+    - assets/images/love.png
+    - assets/images/happy.png
+    - assets/images/neutral.png
+    - assets/images/sad.png
+    - assets/images/angry.png
 
 flutter_launcher_icons:
   android: true
