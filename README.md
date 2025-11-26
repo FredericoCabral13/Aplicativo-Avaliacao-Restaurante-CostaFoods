@@ -33,9 +33,9 @@ No Android Studio, vá em ```View/Tools/Device Explorer``` e depois em ```data/d
 Vá até o diretório ```data/data/com.example.app_restaurante/app_flutter/avaliacoes_registros.csv```.
 
 ## Passos ao adicionar ícone novo
+- Adicione uma imagem com o fone ```costa_foods_feedbacks.png``` nas pastas ```assets/icon``` e  ```assets/images``` (caso queira a mesma imagem de fundo e de ícone do aplicativo);
 - Feche o aplicativo se estiver rodando no emulador;
-- Copie o grupo de comandos abaixo para o terminal dentro do diretório do projeto (ex: no terminal do próprio VS Code);
-- Insira **A** (ou **a**) quando aparecer uma pergunta.
+- Copie o grupo de comandos abaixo para o terminal dentro do diretório do projeto (ex: no terminal do próprio VS Code) e nsira **A** (ou **a**) quando aparecer uma pergunta.
 ```
 Remove-Item  android/app/src/main/res/mipmap-*
 Remove-Item -Recurse -Force android/app/src/main/res/drawable-*
