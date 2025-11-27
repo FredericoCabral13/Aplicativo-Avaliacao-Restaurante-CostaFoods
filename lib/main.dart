@@ -18,6 +18,8 @@ import 'package:flutter/services.dart'; // PARA FilteringTextInputFormatter
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'dart:convert'; // ✅ ADICIONE ESTA IMPORTACAO PARA UTF-8
+
 // Definido uma ÚNICA vez no topo do arquivo (Correção do Erro de Duplicação)
 typedef PhraseSelectedCallback = void Function(String phrase);
 
@@ -314,8 +316,14 @@ class AppData extends ChangeNotifier {
     ); // ✅ CALCULA SATISFAÇÃO
     final String unidadeCSV = _getUnitForCSV(); // ✅ UNIDADE FORMATADA
 
+    // ✅ CORREÇÃO: TIMESTAMP SEM MILISSEGUNDOS
+    final String timestamp = DateTime.now().toIso8601String().replaceFirst(
+      RegExp(r'\.\d+'),
+      '',
+    );
+
     final newRecord = {
-      'timestamp': DateTime.now().toIso8601String(),
+      'timestamp': timestamp,
       'turno': shift,
       'estrelas': star,
       'satisfacao': satisfacao, // ✅ ADICIONA SATISFAÇÃO
@@ -413,8 +421,16 @@ class AppData extends ChangeNotifier {
       ]);
     }
 
-    final csvString = const ListToCsvConverter().convert(csvData);
+    final csvString = const ListToCsvConverter(
+      fieldDelimiter: ';',
+    ).convert(csvData);
     await file.writeAsString(csvString);
+    // ✅ CORREÇÃO: SALVA COM CODIFICAÇÃO UTF-8 E BOM
+    final bom = utf8.encode('\uFEFF'); // Byte Order Mark para UTF-8
+    final encodedData = utf8.encode(csvString);
+    final fullData = [...bom, ...encodedData];
+
+    await file.writeAsBytes(fullData, flush: true);
   }
 
   Future<void> loadDataFromCSV() async {
@@ -423,8 +439,23 @@ class AppData extends ChangeNotifier {
 
     if (!(await file.exists())) return;
 
-    final csvString = await file.readAsString();
-    final csvData = const CsvToListConverter().convert(csvString);
+    // ✅ CORREÇÃO: LÊ COM CODIFICAÇÃO UTF-8
+    final bytes = await file.readAsBytes();
+    String csvString;
+
+    // Remove BOM se existir e decodifica como UTF-8
+    if (bytes.length >= 3 &&
+        bytes[0] == 0xEF &&
+        bytes[1] == 0xBB &&
+        bytes[2] == 0xBF) {
+      csvString = utf8.decode(bytes.sublist(3));
+    } else {
+      csvString = utf8.decode(bytes);
+    }
+
+    final csvData = const CsvToListConverter(
+      fieldDelimiter: ';',
+    ).convert(csvString);
 
     allEvaluationRecords.clear();
 
@@ -732,7 +763,7 @@ class AppData extends ChangeNotifier {
       // Tentar encontrar a pasta Downloads
       String downloadsPath = await _getDownloadsPath();
 
-      final file = File('$downloadsPath/avaliacoes_costa_foods.csv');
+      final file = File('$downloadsPath/restaurante_costa_foods.csv');
       await file.writeAsString(csvData, flush: true);
 
       if (context.mounted) {
@@ -882,7 +913,7 @@ class AppData extends ChangeNotifier {
     }
 
     print('✅ Filtro finalizado: ${csvData.length - 1} registros incluídos');
-    return const ListToCsvConverter().convert(csvData);
+    return const ListToCsvConverter(fieldDelimiter: ';').convert(csvData);
   }
 
   // ✅ MÉTODO AUXILIAR PARA COMPARAR SE É O MESMO DIA
@@ -905,7 +936,7 @@ class AppData extends ChangeNotifier {
     try {
       // Usar diretório de documentos (funciona sem permissões especiais)
       final directory = await getApplicationDocumentsDirectory();
-      final fileName = 'avaliacoes_costa_foods.csv';
+      final fileName = 'restaurante_costa_foods.csv';
       final file = File('${directory.path}/$fileName');
 
       await file.writeAsString(csvData, flush: true);
@@ -1129,7 +1160,12 @@ class AppData extends ChangeNotifier {
       final fileName = 'avaliacoes_costa_foods_$timestamp.csv';
       final file = File('${downloadsDir.path}/$fileName');
 
-      await file.writeAsString(csvData, flush: true);
+      // ✅ SALVA COM UTF-8
+      final bom = utf8.encode('\uFEFF');
+      final encodedData = utf8.encode(csvData);
+      final fullData = [...bom, ...encodedData];
+
+      await file.writeAsBytes(fullData, flush: true);
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1212,14 +1248,21 @@ class AppData extends ChangeNotifier {
   Future<void> _shareFile(BuildContext context, String csvData) async {
     try {
       final directory = await getTemporaryDirectory();
-      final file = File('${directory.path}/avaliacoes_costa_foods.csv');
-      await file.writeAsString(csvData, flush: true);
+      final file = File('${directory.path}/restaurante_costa_foods.csv');
+      // ✅ CORREÇÃO: SALVA COM UTF-8 E BOM
+      final bom = utf8.encode('\uFEFF');
+      final encodedData = utf8.encode(csvData);
+      final fullData = [...bom, ...encodedData];
+
+      await file.writeAsBytes(fullData, flush: true);
 
       // ✅ MENSAGEM PERSONALIZADA PARA COMPARTILHAMENTO
       final String shareMessage = _getShareMessage();
 
       await Share.shareXFiles(
-        [XFile(file.path)],
+        [
+          XFile(file.path, mimeType: 'text/csv; charset=utf-8'),
+        ], // ✅ ESPECIFICA CHARSET
         text: shareMessage, // ✅ MENSAGEM PERSONALIZADA
         subject:
             '(${_selectedUnit ?? 'Não definida'}) Avaliações Restaurante Costa Foods - Relatório', // ✅ ASSUNTO
@@ -1364,7 +1407,7 @@ Arquivo contém dados completos das avaliações dos clientes.
       ]);
     }
 
-    return const ListToCsvConverter().convert(csvData);
+    return const ListToCsvConverter(fieldDelimiter: ';').convert(csvData);
   }
 
   // ✅ MÉTODO PARA DETERMINAR STATUS DE SATISFAÇÃO
