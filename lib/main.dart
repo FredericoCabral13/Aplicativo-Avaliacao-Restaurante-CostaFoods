@@ -20,6 +20,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'dart:convert'; // IMPORTACAO PARA UTF-8
 
+import 'package:permission_handler/permission_handler.dart'; // PARA PERMISSÕES
+
 // Definido uma ÚNICA vez no topo do arquivo
 typedef PhraseSelectedCallback = void Function(String phrase);
 
@@ -216,8 +218,29 @@ class AppData extends ChangeNotifier {
 
   // INICIALIZAÇÃO DO APP
   Future<void> _initializeApp() async {
+    // 1. Tenta pedir permissão logo ao abrir
+    await _requestStoragePermission();
+
+    // 2. Carrega os dados (se tiver permissão, vai ler do arquivo antigo; se não, começa vazio)
     await loadDataFromCSV();
+
+    // 3. Verifica se é a primeira vez (lógica do tutorial/unidade)
     await _checkFirstTimeOpen();
+  }
+
+  // Gerencia o pedido de permissão
+  Future<void> _requestStoragePermission() async {
+    // Verifica se é Android 11 ou superior (que exige MANAGE_EXTERNAL_STORAGE)
+    if (await Permission.manageExternalStorage.isDenied) {
+      // Se ainda não tem permissão, pede.
+      // No Android 11+, isso abrirá automaticamente a tela "Acesso a todos os arquivos"
+      await Permission.manageExternalStorage.request();
+    }
+
+    // Para Android 10 ou inferior (caso rode em aparelhos antigos)
+    if (await Permission.storage.isDenied) {
+      await Permission.storage.request();
+    }
   }
 
   // VERIFICA SE É A PRIMEIRA VEZ QUE ABRE O APP
@@ -2412,6 +2435,66 @@ class _AppTabsControllerState extends State<AppTabsController> {
     }
   }
 
+  // Método para verificar permissão e mostrar o Dialog explicativo
+  Future<void> _checkAndRequestPermission() async {
+    // Verifica se já temos a permissão
+    var status = await Permission.manageExternalStorage.status;
+
+    // Se não tiver permissão (e não for Android antigo que usa outra permissão)
+    if (!status.isGranted) {
+      if (!mounted) return; // Segurança do Flutter
+
+      // Mostra o Dialog explicando o motivo
+      showDialog(
+        context: context,
+        barrierDismissible: false, // O usuário é obrigado a clicar em um botão
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('Permissão Necessária'),
+            content: const Text(
+              'Para que seus dados NÃO SEJAM PERDIDOS caso você desinstale o app, '
+              'precisamos de permissão para salvar o arquivo de backup na sua pasta de Downloads.\n\n'
+              'Por favor, ative a permissão para "Costa Foods Feedbacks" acessar os arquivos.\n\n'
+              'Caso não tenha ativado, feche o aplicativo e o abra novamente.',
+              style: TextStyle(fontSize: 16),
+            ),
+            actions: [
+              TextButton(
+                child: const Text(
+                  'Agora não',
+                  style: TextStyle(color: Colors.grey),
+                ),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Atenção: Sem essa permissão, os dados serão apagados ao desinstalar o app.',
+                      ),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                },
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color.fromARGB(255, 111, 136, 63),
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Já ativei'),
+                onPressed: () async {
+                  Navigator.of(context).pop(); // Fecha o dialog
+                  // Abre a tela de configurações do Android
+                  await Permission.manageExternalStorage.request();
+                },
+              ),
+            ],
+          );
+        },
+      );
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -2420,6 +2503,9 @@ class _AppTabsControllerState extends State<AppTabsController> {
     _startInactivityTimer(); // INICIA O TIMER// Força o modo imersivo (esconde botões do Android) sempre que a tela inicia
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _enableKioskMode();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAndRequestPermission();
+    });
   }
 
   // TENTA ATIVAR O MODO KIOSK (BLOQUEIA HOME E RECENTES)
