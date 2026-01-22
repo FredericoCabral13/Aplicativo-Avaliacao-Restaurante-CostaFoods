@@ -20,7 +20,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'dart:convert'; // IMPORTACAO PARA UTF-8
 
-// Definido uma ÚNICA vez no topo do arquivo (Correção do Erro de Duplicação)
+// Definido uma ÚNICA vez no topo do arquivo
 typedef PhraseSelectedCallback = void Function(String phrase);
 
 void main() {
@@ -56,7 +56,7 @@ class AppData extends ChangeNotifier {
   bool _showUnitSelection = false; // Controla se mostra o pop-up
   bool _showUniformSelection = false; // Controla se mostra seleção de uniforme
 
-  // NOVIDADE: Lista para armazenar CADA avaliação como um registro de mapa
+  // Lista para armazenar CADA avaliação como um registro de mapa
   List<Map<String, dynamic>> allEvaluationRecords = [];
 
   // Mapeamentos para cálculo em tempo real (retornados na Estatística)
@@ -66,7 +66,7 @@ class AppData extends ChangeNotifier {
   };
   Map<int, Map<String, int>> shiftDetailedRatings = {1: {}, 2: {}};
 
-  // CORREÇÃO: Variável de Sentimento definida no topo (acessível por todos os métodos)
+  // Variável de Sentimento definida no topo (acessível por todos os métodos)
   final Map<String, bool> _sentimentMap = const {
     'Bem Temperada': true,
     'Comida quente': true,
@@ -152,7 +152,7 @@ class AppData extends ChangeNotifier {
       return;
     }
 
-    // CORREÇÃO: Remove qualquer informação de hora/minuto/segundo
+    // Remove qualquer informação de hora/minuto/segundo
     final startDay = DateTime(
       _selectedStartDate!.year,
       _selectedStartDate!.month,
@@ -303,7 +303,7 @@ class AppData extends ChangeNotifier {
   // MÉTODOS DE AVALIAÇÃO E LEITURA
   // ===============================================================
 
-  // NOVO MÉTODO: Adiciona um NOVO registro de avaliação
+  // Adiciona um novo registro de avaliação
   void addEvaluationRecord({
     required int star,
     required int shift,
@@ -316,7 +316,7 @@ class AppData extends ChangeNotifier {
     ); // CALCULA SATISFAÇÃO
     final String unidadeCSV = _getUnitForCSV(); // UNIDADE FORMATADA
 
-    // CORREÇÃO: TIMESTAMP SEM MILISSEGUNDOS
+    // TIMESTAMP SEM MILISSEGUNDOS
     final String timestamp = DateTime.now().toIso8601String().replaceFirst(
       RegExp(r'\.\d+'),
       '',
@@ -382,6 +382,22 @@ class AppData extends ChangeNotifier {
   // ===============================================================
 
   Future<String> _getFilePath() async {
+    // Verifica se é Android
+    if (Platform.isAndroid) {
+      // 1. Aponta para a pasta pública de Downloads (que não apaga ao desinstalar)
+      final directory = Directory('/storage/emulated/0/Download');
+
+      // 2. Garante que a pasta existe
+      if (!await directory.exists()) {
+        await directory.create(recursive: true);
+      }
+
+      // 3. Define um nome FIXO para o arquivo.
+      // Isso garante que ao reinstalar o app, ele encontre o arquivo antigo.
+      return '${directory.path}/avaliacoes_costa_foods_db.csv';
+    }
+
+    // Fallback para iOS ou outros (mantém o padrão)
     final directory = await getApplicationDocumentsDirectory();
     return '${directory.path}/avaliacoes_registros.csv';
   }
@@ -425,7 +441,7 @@ class AppData extends ChangeNotifier {
       fieldDelimiter: ';',
     ).convert(csvData);
     await file.writeAsString(csvString);
-    // CORREÇÃO: SALVA COM CODIFICAÇÃO UTF-8 E BOM
+    // SALVA COM CODIFICAÇÃO UTF-8 E BOM
     final bom = utf8.encode('\uFEFF'); // Byte Order Mark para UTF-8
     final encodedData = utf8.encode(csvString);
     final fullData = [...bom, ...encodedData];
@@ -439,7 +455,7 @@ class AppData extends ChangeNotifier {
 
     if (!(await file.exists())) return;
 
-    // CORREÇÃO: LÊ COM CODIFICAÇÃO UTF-8
+    // LÊ COM CODIFICAÇÃO UTF-8
     final bytes = await file.readAsBytes();
     String csvString;
 
@@ -618,7 +634,7 @@ class AppData extends ChangeNotifier {
       dailyCounts[recordDay]![star] = (dailyCounts[recordDay]![star] ?? 0) + 1;
     }
 
-    // CORREÇÃO: Preencher dias faltantes de ONTEM até 7 dias atrás
+    // Preencher dias faltantes de ONTEM até 7 dias atrás
     final now = DateTime.now();
     final yesterday = DateTime(
       now.year,
@@ -803,7 +819,7 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  // NOVO MÉTODO PARA EXPORTAR COM FILTRO APLICADO
+  // MÉTODO PARA EXPORTAR COM FILTRO APLICADO
   Future<void> _exportWithDateFilter(BuildContext context) async {
     try {
       final csvData = await _generateFilteredCSVContent();
@@ -1248,7 +1264,7 @@ class AppData extends ChangeNotifier {
     try {
       final directory = await getTemporaryDirectory();
       final file = File('${directory.path}/restaurante_costa_foods.csv');
-      // CORREÇÃO: SALVA COM UTF-8 E BOM
+      // SALVA COM UTF-8 E BOM
       final bom = utf8.encode('\uFEFF');
       final encodedData = utf8.encode(csvData);
       final fullData = [...bom, ...encodedData];
@@ -1700,8 +1716,7 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// NOVO WIDGET QUE GERENCIA O POP-UP DE UNIDADE
-// NOVO WIDGET QUE GERENCIA O POP-UP DE UNIDADE E UNIFORME
+// WIDGET QUE GERENCIA O POP-UP DE UNIDADE E UNIFORME
 class AppWithUnitSelection extends StatelessWidget {
   const AppWithUnitSelection({super.key});
 
@@ -1905,7 +1920,7 @@ class AppWithUnitSelection extends StatelessWidget {
 
               OutlinedButton(
                 onPressed: () {
-                  // CORREÇÃO: Usa métodos públicos do AppData
+                  // Usa métodos públicos do AppData
                   appData._showUnitSelection = true;
                   appData._showUniformSelection = false;
                   appData.notifyListeners();
@@ -2356,9 +2371,14 @@ class _AppTabsControllerState extends State<AppTabsController> {
   int? _initialTabIndex;
 
   // SENHA PARA ACESSAR ESTATÍSTICAS
-  final String _statisticsPassword = "1234"; // Senha definida no código
+  final String _statisticsPassword = "986532"; // Senha definida no código
   bool _showPasswordDialog = false;
   String _enteredPassword = "";
+
+  // VARIÁVEL PARA SABER QUAL AÇÃO EXECUTAR APÓS A SENHA
+  // 'stats' = Ir para estatísticas
+  // 'exit' = Sair do aplicativo (Botão voltar do Android)
+  String _targetAction = 'stats';
 
   // CONTROLLER PERMANENTE PARA O CAMPO DE SENHA
   final TextEditingController _passwordController = TextEditingController();
@@ -2377,6 +2397,9 @@ class _AppTabsControllerState extends State<AppTabsController> {
   int _countdownSeconds = 10;
   final Duration _countdownDuration = const Duration(seconds: 10);
 
+  // CANAL DE COMUNICAÇÃO COM O ANDROID NATIVO
+  static const platform = MethodChannel('com.costafoods.app/kiosk');
+
   // 1. Lógica para determinar o turno padrão baseado no horário atual
   int _calculateDefaultShift() {
     final hour = DateTime.now().hour;
@@ -2394,7 +2417,29 @@ class _AppTabsControllerState extends State<AppTabsController> {
     super.initState();
     // Inicializa o turno com o valor padrão
     _currentShift = _calculateDefaultShift();
-    _startInactivityTimer(); // INICIA O TIMER
+    _startInactivityTimer(); // INICIA O TIMER// Força o modo imersivo (esconde botões do Android) sempre que a tela inicia
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    _enableKioskMode();
+  }
+
+  // TENTA ATIVAR O MODO KIOSK (BLOQUEIA HOME E RECENTES)
+  Future<void> _enableKioskMode() async {
+    try {
+      await platform.invokeMethod('startKiosk');
+    } catch (e) {
+      print(
+        "Erro ao ativar Kiosk Mode (pode precisar de configuração nativa): $e",
+      );
+    }
+  }
+
+  // TENTA DESATIVAR O MODO KIOSK PARA SAIR
+  Future<void> _disableKioskMode() async {
+    try {
+      await platform.invokeMethod('stopKiosk');
+    } catch (e) {
+      print("Erro ao desativar Kiosk Mode: $e");
+    }
   }
 
   @override
@@ -2487,7 +2532,8 @@ class _AppTabsControllerState extends State<AppTabsController> {
       _currentShift = _calculateDefaultShift();
       _selectedRatingFromHome = null;
       _initialTabIndex = null;
-    });
+    }); // Garante que a barra continue escondida
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
     // ScaffoldMessenger.of(context).showSnackBar(
     //   const SnackBar(
@@ -2510,22 +2556,24 @@ class _AppTabsControllerState extends State<AppTabsController> {
     }
 
     _inactivityTimer?.cancel();
-    _startInactivityTimer();
+    _startInactivityTimer(); // Reforça esconder a barra caso ela tenha aparecido
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   }
 
   // MOSTRA O DIALOG DE SENHA COM TECLADO NATIVO
-  void _showPasswordInput() {
-    _passwordController.clear(); // LIMPA O CAMPO
+  void _showPasswordInput(String action) {
+    _targetAction = action; // Agora 'action' existe e pode ser usada
+
+    _passwordController.clear();
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => _buildPasswordDialog(),
     ).then((_) {
-      _keyboardInactivityTimer?.cancel(); // CANCELA TIMER AO FECHAR
+      _keyboardInactivityTimer?.cancel();
     });
 
-    // INICIA O TIMER APÓS ABRIR O DIALOG
     _startKeyboardInactivityTimer();
   }
 
@@ -2548,7 +2596,7 @@ class _AppTabsControllerState extends State<AppTabsController> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Acesso às estatísticas cancelado por inatividade'),
+          content: Text('Operação cancelada por inatividade.'),
           duration: Duration(seconds: 2),
         ),
       );
@@ -2563,18 +2611,26 @@ class _AppTabsControllerState extends State<AppTabsController> {
 
   // VERIFICA A SENHA (ATUALIZADO)
   void _checkPassword() {
-    _keyboardInactivityTimer?.cancel(); // CANCELA TIMER
-
+    _keyboardInactivityTimer?.cancel();
     final enteredPassword = _passwordController.text;
 
     if (enteredPassword == _statisticsPassword) {
-      // Senha correta - permite acesso às estatísticas
-      Navigator.of(context).pop(); // FECHA O DIALOG PRIMEIRO
-      setState(() {
-        _selectedIndex = 2; // Navega para estatísticas
-      });
+      // SENHA CORRETA
+      Navigator.of(context).pop(); // Fecha o dialog
+
+      if (_targetAction == 'exit') {
+        // Se a ação for SAIR (clicou no botão voltar do Android)// 1. Libera o Kiosk Mode (Android volta ao normal)
+        _disableKioskMode().then((_) {
+          SystemNavigator.pop();
+        });
+      } else {
+        // Se a ação for ESTATÍSTICAS
+        setState(() {
+          _selectedIndex = 2;
+        });
+      }
     } else {
-      // Senha incorreta - mostra erro
+      // SENHA INCORRETA
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Senha incorreta! Tente novamente.'),
@@ -2582,8 +2638,8 @@ class _AppTabsControllerState extends State<AppTabsController> {
           duration: Duration(seconds: 2),
         ),
       );
-      _passwordController.clear(); // LIMPA O CAMPO
-      _startKeyboardInactivityTimer(); // REINICIA TIMER APÓS ERRO
+      _passwordController.clear();
+      _startKeyboardInactivityTimer();
     }
   }
 
@@ -2596,31 +2652,28 @@ class _AppTabsControllerState extends State<AppTabsController> {
     });
   }
 
-  // 2. MUDANÇA: Novo comportamento ao tocar nos itens da barra
+  // Comportamento ao tocar nos itens da barra
   void _onItemTapped(int index) {
-    _resetTimerOnInteraction(); // REINICIA TIMER
-    // Se o usuário está voltando para a tela de Avaliação (índice 0)
-    // VERIFICA SE É A ABA DE ESTATÍSTICAS (índice 2)
+    _resetTimerOnInteraction();
+
     if (index == 2) {
-      _showPasswordInput();
-      return; // Impede a navegação imediata
+      // Se clicou na aba Estatísticas, chama senha com ação 'stats'
+      _showPasswordInput('stats');
+      return;
     }
     if (index == 0) {
       final defaultShift = _calculateDefaultShift();
-
-      // Se o turno atual for diferente do padrão, reseta para o padrão.
       if (_currentShift != defaultShift) {
         setState(() {
           _selectedIndex = index;
           _currentShift = defaultShift;
         });
         _resetHomeScreen();
-        return; // Sai da função
+        return;
       }
-      _resetHomeScreen(); // Reseta a tela de avaliação
+      _resetHomeScreen();
     }
 
-    // Comportamento padrão (se não houve reset de turno):
     setState(() {
       _selectedIndex = index;
     });
@@ -2654,12 +2707,15 @@ class _AppTabsControllerState extends State<AppTabsController> {
       builder: (context, setDialogState) {
         return GestureDetector(
           onTap: () {
-            _resetKeyboardTimer(); // REINICIA TIMER AO TOCAR NO DIALOG
+            _resetKeyboardTimer();
           },
           child: AlertDialog(
-            title: const Text(
-              'Senha de Acesso',
-              style: TextStyle(
+            title: Text(
+              // Muda o título dependendo da ação
+              _targetAction == 'exit'
+                  ? 'Sair do Kiosk Mode'
+                  : 'Acesso Restrito',
+              style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
                 color: Color.fromARGB(255, 111, 136, 63),
@@ -2668,39 +2724,36 @@ class _AppTabsControllerState extends State<AppTabsController> {
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  'Digite a senha para acessar as estatísticas:',
-                  style: TextStyle(fontSize: 16),
+                Text(
+                  _targetAction == 'exit'
+                      ? 'Digite a senha para desbloquear e sair:'
+                      : 'Digite a senha para acessar as estatísticas:',
+                  style: const TextStyle(fontSize: 16),
                 ),
                 const SizedBox(height: 20),
-
-                // CAMPO DE TEXTO COM TECLADO NUMÉRICO NATIVO
                 GestureDetector(
-                  onTap:
-                      _resetKeyboardTimer, // REINICIA TIMER AO TOCAR NO CAMPO
+                  onTap: _resetKeyboardTimer,
                   child: TextFormField(
                     controller: _passwordController,
                     onChanged: (value) {
-                      _resetKeyboardTimer(); // REINICIA TIMER A CADA DIGITAÇÃO
-
-                      // CONFIRMAÇÃO AUTOMÁTICA AO DIGITAR O 4º DÍGITO
-                      if (value.length == 4) {
-                        Future.delayed(Duration(milliseconds: 100), () {
+                      _resetKeyboardTimer();
+                      if (value.length == _statisticsPassword.length) {
+                        Future.delayed(const Duration(milliseconds: 100), () {
                           _checkPassword();
                         });
                       }
-
                       setDialogState(() {});
                     },
-                    onTap:
-                        _resetKeyboardTimer, // REINICIA TIMER AO FOCAR NO CAMPO
+                    onTap: _resetKeyboardTimer,
                     obscureText: true,
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 18, letterSpacing: 10),
                     keyboardType: TextInputType.number,
                     inputFormatters: [
                       FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(4),
+                      LengthLimitingTextInputFormatter(
+                        _statisticsPassword.length,
+                      ),
                     ],
                     autofocus: true,
                   ),
@@ -2709,7 +2762,6 @@ class _AppTabsControllerState extends State<AppTabsController> {
               ],
             ),
             actions: [
-              // BOTÃO CANCELAR
               TextButton(
                 onPressed: () {
                   _keyboardInactivityTimer?.cancel();
@@ -2883,89 +2935,101 @@ class _AppTabsControllerState extends State<AppTabsController> {
 
     return Consumer<AppData>(
       builder: (context, appData, child) {
-        return Scaffold(
-          appBar: AppBar(
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _selectedIndex == 0
-                      ? 'Avaliação do Restaurante (Turno $_currentShift)'
-                      : 'Feedbacks (Turno $_currentShift)',
-                  style: const TextStyle(
-                    fontSize: 18.0,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                if (appData.selectedUnit != null)
+        // --- MUDANÇA PRINCIPAL: PopScope ---
+        // Isso intercepta o botão "Voltar" do Android
+        return PopScope(
+          canPop: false, // Bloqueia a ação padrão de fechar
+          onPopInvoked: (didPop) {
+            if (didPop) return;
+            // Quando tentar sair, chama a senha com ação 'exit'
+            _showPasswordInput('exit');
+          },
+          child: Scaffold(
+            appBar: AppBar(
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   Text(
-                    appData.selectedUnit!,
+                    _selectedIndex == 0
+                        ? 'Avaliação do Restaurante (Turno $_currentShift)'
+                        : 'Feedbacks (Turno $_currentShift)',
                     style: const TextStyle(
-                      fontSize: 12.0,
-                      color: Colors.white70,
-                      fontWeight: FontWeight.normal,
+                      fontSize: 18.0,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
                     ),
                   ),
+                  if (appData.selectedUnit != null)
+                    Text(
+                      appData.selectedUnit!,
+                      style: const TextStyle(
+                        fontSize: 12.0,
+                        color: Colors.white70,
+                        fontWeight: FontWeight.normal,
+                      ),
+                    ),
+                ],
+              ),
+              backgroundColor: const Color.fromARGB(255, 111, 136, 63),
+              elevation: 4,
+              actions: _selectedIndex == 1 ? [] : [],
+            ),
+            body: Stack(
+              children: [
+                GestureDetector(
+                  onTap: _resetTimerOnInteraction,
+                  onPanDown: (_) => _resetTimerOnInteraction(),
+                  onScaleStart: (_) => _resetTimerOnInteraction(),
+                  behavior: HitTestBehavior.deferToChild,
+                  child: Container(
+                    color: Colors.transparent,
+                    width: double.infinity,
+                    height: double.infinity,
+                    child: Center(
+                      child: widgetOptions.elementAt(_selectedIndex),
+                    ),
+                  ),
+                ),
+                if (_showPasswordDialog) _buildPasswordDialog(),
+                if (_showInactivityDialog &&
+                    (_selectedIndex == 1 || _selectedIndex == 2))
+                  _buildInactivityConfirmationDialog(),
               ],
             ),
-            backgroundColor: Color.fromARGB(255, 111, 136, 63),
-            elevation: 4,
-            actions: _selectedIndex == 1 ? [] : [],
-          ),
-          body: Stack(
-            children: [
-              // GESTUREDETECTOR QUE NÃO BLOQUEIA OS CLIQUES
-              GestureDetector(
-                onTap: _resetTimerOnInteraction,
-                onPanDown: (_) => _resetTimerOnInteraction(),
-                onScaleStart: (_) => _resetTimerOnInteraction(),
-                behavior:
-                    HitTestBehavior.deferToChild, // PERMITE CLIQUES NOS FILHOS
-                child: Container(
-                  color: Colors.transparent,
-                  width: double.infinity,
-                  height: double.infinity,
-                  child: Center(child: widgetOptions.elementAt(_selectedIndex)),
+            bottomNavigationBar: Container(
+              color: Colors.white, // Garante fundo branco para o container
+              padding: const EdgeInsets.only(bottom: 50.0, top: 0), // SOBE 20px
+              child: BottomNavigationBar(
+                elevation: 0, // Remove a sombra interna para não duplicar
+                backgroundColor: Colors.white,
+                items: const <BottomNavigationBarItem>[
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.insert_emoticon_rounded),
+                    label: 'Avaliações',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.task_alt_rounded),
+                    label: 'Feedbacks',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.bar_chart),
+                    label: 'Estatísticas',
+                  ),
+                ],
+                selectedLabelStyle: const TextStyle(
+                  fontSize: 16.0,
+                  fontWeight: FontWeight.bold,
                 ),
+                unselectedLabelStyle: const TextStyle(fontSize: 14.0),
+                currentIndex: _selectedIndex,
+                selectedItemColor: Colors.green.shade700,
+                onTap: (index) {
+                  _resetTimerOnInteraction();
+                  _onItemTapped(index);
+                },
               ),
-
-              // DIALOG DE SENHA (se necessário)
-              if (_showPasswordDialog) _buildPasswordDialog(),
-
-              // DIALOG DE INATIVIDADE (apenas na tela de feedbacks)
-              if (_showInactivityDialog &&
-                  (_selectedIndex == 1 || _selectedIndex == 2))
-                _buildInactivityConfirmationDialog(),
-            ],
-          ),
-          bottomNavigationBar: BottomNavigationBar(
-            items: const <BottomNavigationBarItem>[
-              BottomNavigationBarItem(
-                icon: Icon(Icons.insert_emoticon_rounded),
-                label: 'Avaliações',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.task_alt_rounded),
-                label: 'Feedbacks',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.bar_chart),
-                label: 'Estatísticas',
-              ),
-            ],
-            selectedLabelStyle: const TextStyle(
-              fontSize: 16.0,
-              fontWeight: FontWeight.bold,
             ),
-            unselectedLabelStyle: const TextStyle(fontSize: 14.0),
-            currentIndex: _selectedIndex,
-            selectedItemColor: Colors.green.shade700,
-            onTap: (index) {
-              _resetTimerOnInteraction();
-              _onItemTapped(index);
-            },
           ),
         );
       },
@@ -2977,7 +3041,7 @@ class _AppTabsControllerState extends State<AppTabsController> {
 // ===================================================================
 
 class RatingScreen extends StatefulWidget {
-  // ADICIONADO: Recebe a nota inicial e o índice da aba
+  // Recebe a nota inicial e o índice da aba
   final int currentShift;
   final int initialRating;
   final int initialTabIndex;
@@ -3006,7 +3070,7 @@ class _RatingScreenState extends State<RatingScreen> {
   int _selectedStars = 0;
   final Set<String> _pendingDetailedPhrases = {};
 
-  // NOVIDADE: Controller para o campo de texto do comentário
+  // Controller para o campo de texto do comentário
   final TextEditingController _commentController = TextEditingController();
 
   final Map<String, List<String>> _phrases = const {
@@ -3045,7 +3109,7 @@ class _RatingScreenState extends State<RatingScreen> {
       appTabsControllerState?._resetTimerOnInteraction();
     });
 
-    // CORREÇÃO: Inicializa com o valor passado ou usa 0 como padrão.
+    // Inicializa com o valor passado ou usa 0 como padrão.
     _selectedStars = widget.initialRating ?? 0;
 
     // Define a aba inicial com o valor passado ou usa 0 (Positivo) como padrão.
@@ -3110,7 +3174,7 @@ class _RatingScreenState extends State<RatingScreen> {
 
   void _handleStarClick(int star, BuildContext tabContext) {
     setState(() {
-      // CORREÇÃO: Apenas a estrela clicada é armazenada (comportamento "radio button")
+      // Apenas a estrela clicada é armazenada (comportamento "radio button")
       _selectedStars = star;
     });
 
@@ -3175,10 +3239,10 @@ class _RatingScreenState extends State<RatingScreen> {
 
     final currentShift = widget.currentShift;
 
-    // 1. COLETAR TODOS OS DADOS DA AVALIAÇÃO
+    // COLETAR TODOS OS DADOS DA AVALIAÇÃO
     final comment = _commentController.text;
 
-    // 2. NOVIDADE: Adicionar o registro de transação ao AppData (que salva automaticamente)
+    // Adicionar o registro de transação ao AppData (que salva automaticamente)
     appData.addEvaluationRecord(
       star: _selectedStars,
       shift: currentShift,
@@ -4056,7 +4120,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     );
   }
 
-  // NOVO MÉTODO SEGURO PARA EXPORTAÇÃO
+  // MÉTODO SEGURO PARA EXPORTAÇÃO
   void _exportDataWithSafety(BuildContext context) {
     // Fecha qualquer pop-up existente antes de abrir novo
     Navigator.of(context).popUntil((route) => route.isFirst);
@@ -4800,10 +4864,6 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                   child: SizedBox(
                     width: screenWidth * 0.8,
                     height: screenWidth * 0.8,
-                    child: Image.asset(
-                      'assets/images/costa_foods_feedbacks.png',
-                      fit: BoxFit.contain,
-                    ),
                   ),
                 ),
               ),

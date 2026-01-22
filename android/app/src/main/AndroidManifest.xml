@@ -4,14 +4,28 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-<!-- Para Android 10+ -->
-<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
+<!-- Para Android 10+ 
+<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+    android:minSdkVersion="30" />
+    -->
 
     <application
-        android:label="Costa Foods Feedbacks"
+        android:label="Costa Foods Brasil Feedbacks"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
-        android:requestLegacyExternalStorage="true"
+        android:requestLegacyExternalStorage="true" <receiver
+            android:name=".MyDeviceAdminReceiver"
+            android:label="Kiosk Admin"
+            android:description="@string/app_name"  android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin_receiver" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
 
         <activity
             android:name=".MainActivity"
