@@ -8,7 +8,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:costa_feedbacks/main.dart';
+import 'package:costa_foods_feedbacks/main.dart';
 
 void main() {
   testWidgets('App loads without errors', (WidgetTester tester) async {

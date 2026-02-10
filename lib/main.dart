@@ -36,6 +36,13 @@ void main() {
 class AppData extends ChangeNotifier {
   static const String _kFileName = 'avaliacoes_registros.csv';
 
+  // =============================================================
+  // CONFIGURAÇÃO GERAL PARA DEFINIR A FUNCIONALIDADE DO APP
+  // 1 = Restaurante (Comida, Serviço, Ambiente)
+  // 2 = Ambientação da Empresa (Acolhimento, Organização, Conteúdo)
+  static const int appFunctionality = 1;
+  // =============================================================
+
   // LISTA DE UNIDADES DA EMPRESA
   final List<String> companyUnits = [
     'Matriz',
@@ -62,18 +69,28 @@ class AppData extends ChangeNotifier {
   List<Map<String, dynamic>> allEvaluationRecords = [];
 
   // Mapeamentos para cálculo em tempo real (retornados na Estatística)
+  // 5 TURNOS: 1=Café Manhã, 2=Almoço, 3=Café Tarde, 4=Jantar, 5=Ceia
   Map<int, Map<int, int>> shiftRatingsCount = {
     1: {1: 0, 2: 0, 3: 0, 4: 0, 5: 0},
     2: {1: 0, 2: 0, 3: 0, 4: 0, 5: 0},
+    3: {1: 0, 2: 0, 3: 0, 4: 0, 5: 0},
+    4: {1: 0, 2: 0, 3: 0, 4: 0, 5: 0},
+    5: {1: 0, 2: 0, 3: 0, 4: 0, 5: 0},
   };
-  Map<int, Map<String, int>> shiftDetailedRatings = {1: {}, 2: {}};
+  Map<int, Map<String, int>> shiftDetailedRatings = {
+    1: {},
+    2: {},
+    3: {},
+    4: {},
+    5: {},
+  };
 
-  // Variável de Sentimento definida no topo (acessível por todos os métodos)
-  final Map<String, bool> _sentimentMap = const {
+  // MAPA DE RESTAURANTE
+  final Map<String, bool> _restaurantSentiment = const {
     'Bem Temperada': true,
     'Comida quente': true,
     'Boa Variedade': true,
-    'Sem Sal/Insossa': false,
+    'Gosto Ruim': false,
     'Comida Fria': false,
     'Aparência Estranha': false,
     'Funcionários Atenciosos': true,
@@ -89,6 +106,26 @@ class AppData extends ChangeNotifier {
     'Climatização Ruim': false,
     'Ambiente Barulhento': false,
   };
+
+  // MAPA DE AMBIENTAÇÃO DA EMPRESA
+  final Map<String, bool> _orgSentiment = const {
+    'Achei acolhedor': true,
+    'Me senti bem-vindo(a)': true,
+    'Melhorar recepção': false,
+    'Melhorar acolhimento': false,
+    'Dia organizado': true,
+    'Fluxo claro': true,
+    'Faltou orientação': false,
+    'Fluxo confuso': false,
+    'Conteúdo legal': true,
+    'Boas apresentações': true,
+    'Conteúdo à melhorar': false,
+    'Informações superficiais': false,
+  };
+
+  // Getter inteligente que escolhe qual usar
+  Map<String, bool> get _sentimentMap =>
+      appFunctionality == 1 ? _restaurantSentiment : _orgSentiment;
 
   final List<Color> pieColors = [
     Colors.red.shade700,
@@ -364,15 +401,55 @@ class AppData extends ChangeNotifier {
     saveDataToCSV();
   }
 
+  // ATUALIZA O ÚLTIMO REGISTRO SALVO
+  void updateLastEvaluation({
+    required Set<String> positiveFeedbacks,
+    required Set<String> negativeFeedbacks,
+    String? comment,
+    int? newStarRating, // Caso o usuário mude a nota na tela de detalhes
+  }) {
+    if (allEvaluationRecords.isEmpty) return;
+
+    // Pega o índice do último registro (o que acabou de ser criado pelo emoji)
+    final lastIndex = allEvaluationRecords.length - 1;
+    final lastRecord = allEvaluationRecords[lastIndex];
+
+    // Atualiza os dados
+    if (newStarRating != null) {
+      lastRecord['estrelas'] = newStarRating;
+      lastRecord['satisfacao'] = _getSatisfactionStatus(newStarRating);
+      // Atualiza categoria se tiver mudado
+      // Nota: Se você usa 'unidade_csv' baseada em uniforme, mantém a mesma
+    }
+
+    lastRecord['positivos'] = positiveFeedbacks.join('; ');
+    lastRecord['negativos'] = negativeFeedbacks.join('; ');
+    lastRecord['comentario'] = comment ?? '';
+
+    // Atualiza a lista na memória
+    allEvaluationRecords[lastIndex] = lastRecord;
+
+    // Recalcula estatísticas e salva no CSV novamente
+    _recalculateCounts();
+    notifyListeners();
+    saveDataToCSV();
+  }
+
   // Método para classificar o feedback (usado no _sendRating)
   bool isPositive(String phrase) {
     return _sentimentMap[phrase] ?? false;
   }
 
   void _recalculateCounts() {
-    // Zera os contadores
-    shiftRatingsCount = {1: {}, 2: {}};
-    shiftDetailedRatings = {1: {}, 2: {}};
+    // Zera os contadores para os 5 turnos
+    shiftRatingsCount = {
+      1: {1: 0, 2: 0, 3: 0, 4: 0, 5: 0},
+      2: {1: 0, 2: 0, 3: 0, 4: 0, 5: 0},
+      3: {1: 0, 2: 0, 3: 0, 4: 0, 5: 0},
+      4: {1: 0, 2: 0, 3: 0, 4: 0, 5: 0},
+      5: {1: 0, 2: 0, 3: 0, 4: 0, 5: 0},
+    };
+    shiftDetailedRatings = {1: {}, 2: {}, 3: {}, 4: {}, 5: {}};
 
     for (var record in allEvaluationRecords) {
       final shift = record['turno'] as int;
@@ -384,20 +461,57 @@ class AppData extends ChangeNotifier {
           .split('; ')
           .where((s) => s.isNotEmpty);
 
-      // 1. Contagem de Estrelas
-      shiftRatingsCount[shift]![star] =
-          (shiftRatingsCount[shift]![star] ?? 0) + 1;
+      // SEGURANÇA: Garante que o turno existe no mapa antes de acessar
+      if (shiftRatingsCount.containsKey(shift)) {
+        shiftRatingsCount[shift]![star] =
+            (shiftRatingsCount[shift]![star] ?? 0) + 1;
 
-      // 2. Contagem Detalhada
-      for (var phrase in positives) {
-        shiftDetailedRatings[shift]![phrase] =
-            (shiftDetailedRatings[shift]![phrase] ?? 0) + 1;
-      }
-      for (var phrase in negatives) {
-        shiftDetailedRatings[shift]![phrase] =
-            (shiftDetailedRatings[shift]![phrase] ?? 0) + 1;
+        for (var phrase in positives) {
+          shiftDetailedRatings[shift]![phrase] =
+              (shiftDetailedRatings[shift]![phrase] ?? 0) + 1;
+        }
+        for (var phrase in negatives) {
+          shiftDetailedRatings[shift]![phrase] =
+              (shiftDetailedRatings[shift]![phrase] ?? 0) + 1;
+        }
       }
     }
+  }
+
+  // Converte o ID do turno para o Nome da Refeição
+  String getPeriodName(int shift) {
+    switch (shift) {
+      case 1:
+        return 'Café da Manhã';
+      case 2:
+        return 'Almoço';
+      case 3:
+        return 'Café da Tarde';
+      case 4:
+        return 'Jantar';
+      case 5:
+        return 'Ceia';
+      default:
+        return 'Indefinido';
+    }
+  }
+
+  // Converte o Nome da Refeição de volta para o ID (para carregar o CSV corretamente)
+  int _getShiftIdByName(String name) {
+    // Normaliza para string caso venha algum lixo
+    final normalized = name.trim();
+
+    if (normalized == 'Café da Manhã') return 1;
+    if (normalized == 'Almoço') return 2;
+    if (normalized == 'Café da Tarde') return 3;
+    if (normalized == 'Jantar') return 4;
+    if (normalized == 'Ceia') return 5;
+
+    // Tenta converter se for número (compatibilidade com arquivos antigos)
+    final asNumber = int.tryParse(normalized);
+    if (asNumber != null) return asNumber;
+
+    return 1; // Padrão se não encontrar
   }
 
   // ===============================================================
@@ -448,9 +562,20 @@ class AppData extends ChangeNotifier {
       final int stars = record['estrelas'] as int;
       // CALCULA SATISFAÇÃO
       final String satisfacao = _getSatisfactionStatus(stars);
+      // Converte número para nome
+      // LÓGICA CONDICIONAL DO TURNO PARA RESTAURANTE E AMBIENTAÇÃO DA EMPRESA
+      String nomeTurno;
+      if (appFunctionality == 1) {
+        // Modo Restaurante: Calcula o nome da refeição (Almoço, Jantar...)
+        nomeTurno = getPeriodName(record['turno'] as int);
+      } else {
+        // Modo Empresa: Não usa turnos de refeição, define um padrão
+        nomeTurno = 'Ambientação';
+      }
+
       csvData.add([
         record['timestamp'],
-        record['turno'],
+        nomeTurno, // Vai salvar "Ambientação" se for empresa
         record['estrelas'],
         satisfacao,
         record['positivos'],
@@ -503,16 +628,31 @@ class AppData extends ChangeNotifier {
       final row = csvData[i];
 
       if (row.length >= 7) {
+        // LÓGICA ROBUSTA PARA O TURNO DO RESTAURANTE E AMBIENTAÇÃO DA EMPRESA
+        int turnoId = 1;
+        final turnoRaw = row[1];
+
+        if (turnoRaw is int) {
+          turnoId = turnoRaw;
+        } else {
+          // Se for modo Empresa e estiver escrito "Ambientaçâo", definimos ID 1 (padrão)
+          // Se for modo Restaurante, ele tenta achar "Almoço", "Jantar", etc.
+          if (appFunctionality == 2 && turnoRaw.toString() == 'Ambientação') {
+            turnoId = 1;
+          } else {
+            turnoId = _getShiftIdByName(turnoRaw.toString());
+          }
+        }
+
         Map<String, dynamic> record = {
           'timestamp': row[0].toString(),
-          'turno': row[1] as int,
+          'turno': turnoId, // Salva na memória sempre como ID (número)
           'estrelas': row[2] as int,
           'positivos': row[4].toString(),
           'negativos': row[5].toString(),
           'comentario': row[6].toString(),
         };
 
-        // COLUNA DE SATISFAÇÃO (índice 3)
         if (row.length > 3) {
           record['satisfacao'] = row[3].toString();
         } else {
@@ -520,7 +660,6 @@ class AppData extends ChangeNotifier {
           record['satisfacao'] = _getSatisfactionStatus(stars);
         }
 
-        // COLUNA DE UNIDADE (índice 7 - se existir)
         if (row.length >= 8) {
           record['unidade_csv'] = row[7].toString();
         }
@@ -933,7 +1072,9 @@ class AppData extends ChangeNotifier {
 
       final int stars = record['estrelas'] as int;
       final category = getCategoryName(stars);
-      final turno = record['turno'] == 1 ? 'Manhã/Tarde' : 'Noite/Madrugada';
+      final turno = getPeriodName(
+        record['turno'] as int,
+      ); // Usa o nome da refeição
       final String satisfactionStatus =
           record['satisfacao']?.toString() ?? _getSatisfactionStatus(stars);
 
@@ -1428,7 +1569,15 @@ Arquivo contém dados completos das avaliações dos clientes.
     for (var record in allEvaluationRecords) {
       final int stars = record['estrelas'] as int;
       final category = getCategoryName(stars);
-      final turno = record['turno'] == 1 ? 'Manhã/Tarde' : 'Noite/Madrugada';
+
+      // LÓGICA CONDICIONAL PARA RESTAURANTE E AMBIENTAÇÃO DA EMPRESA
+      String turno;
+      if (appFunctionality == 1) {
+        turno = getPeriodName(record['turno'] as int);
+      } else {
+        turno = 'Ambientação';
+      }
+
       final String satisfactionStatus =
           record['satisfacao']?.toString() ?? _getSatisfactionStatus(stars);
 
@@ -1459,7 +1608,7 @@ Arquivo contém dados completos das avaliações dos clientes.
         return 'Insatisfeito';
       case 3: // Neutro
       default:
-        return ''; // Vazio para neutro
+        return 'Neutro';
     }
   }
 
@@ -2423,16 +2572,44 @@ class _AppTabsControllerState extends State<AppTabsController> {
   // CANAL DE COMUNICAÇÃO COM O ANDROID NATIVO
   static const platform = MethodChannel('com.costafoods.app/kiosk');
 
-  // 1. Lógica para determinar o turno padrão baseado no horário atual
+  // 1. Lógica para determinar a refeição baseada no horário exato (em minutos)
   int _calculateDefaultShift() {
-    final hour = DateTime.now().hour;
-    // Turno 2: 18:00 (6 PM) até 05:59
-    if (hour >= 18 || hour < 6) {
-      return 2;
-    } else {
-      // Turno 1: 06:00 (6 AM) até 17:59
+    final now = DateTime.now();
+    // Converte a hora atual para minutos totais do dia (ex: 10:30 = 10*60 + 30 = 630)
+    final int minutes = (now.hour * 60) + now.minute;
+
+    // DEFINIÇÃO DOS INTERVALOS (baseado no pedido):
+    // Café da Manhã: 02:25 - 09:40
+    // Almoço: 09:45 - 13:46
+    // Café da Tarde: 13:47 - 19:05
+    // Jantar: 19:10 - 23:28
+    // Ceia: 23:29 - 02:15
+
+    // NOTA: Os "buracos" entre horários (ex: 09:41 até 09:44) cairão na refeição anterior
+    // ou posterior dependendo da lógica abaixo para garantir que o app sempre tenha um turno.
+
+    // Entre 02:25 (145 min) e 09:44 (584 min) -> Café da Manhã (Turno 1)
+    if (minutes >= 145 && minutes < 585) {
       return 1;
     }
+
+    // Entre 09:45 (585 min) e 13:46 (826 min) -> Almoço (Turno 2)
+    if (minutes >= 585 && minutes <= 826) {
+      return 2;
+    }
+
+    // Entre 13:47 (827 min) e 19:09 (1149 min) -> Café da Tarde (Turno 3)
+    if (minutes >= 827 && minutes < 1150) {
+      return 3;
+    }
+
+    // Entre 19:10 (1150 min) e 23:28 (1408 min) -> Jantar (Turno 4)
+    if (minutes >= 1150 && minutes <= 1408) {
+      return 4;
+    }
+
+    // Qualquer outro horário (Das 23:29 até 02:24) -> Ceia (Turno 5)
+    return 5;
   }
 
   // Método para verificar permissão e mostrar o Dialog explicativo
@@ -3036,10 +3213,18 @@ class _AppTabsControllerState extends State<AppTabsController> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // TÍTULO DINÂMICO PARA RESTAURANTE E AMBIENTAÇÃO DA EMPRESA
                   Text(
-                    _selectedIndex == 0
-                        ? 'Avaliação do Restaurante (Turno $_currentShift)'
-                        : 'Feedbacks (Turno $_currentShift)',
+                    // VERIFICA O MODO DO APP
+                    AppData.appFunctionality == 1
+                        // CASO 1: RESTAURANTE (Usa os Turnos: Almoço, Jantar, etc.)
+                        ? (_selectedIndex == 0
+                              ? 'Avaliação - ${appData.getPeriodName(_currentShift)}'
+                              : 'Feedbacks - ${appData.getPeriodName(_currentShift)}')
+                        // CASO 2: AMBIENTAÇÃO (Usa o texto fixo "Ambientação da Empresa")
+                        : (_selectedIndex == 0
+                              ? 'Avaliação - Ambientação da Empresa'
+                              : 'Feedbacks - Ambientação da Empresa'),
                     style: const TextStyle(
                       fontSize: 18.0,
                       fontWeight: FontWeight.bold,
@@ -3159,9 +3344,15 @@ class _RatingScreenState extends State<RatingScreen> {
   // Controller para o campo de texto do comentário
   final TextEditingController _commentController = TextEditingController();
 
-  final Map<String, List<String>> _phrases = const {
+  // 1. VARIÁVEIS DO TEMPORIZADOR VISUAL
+  Timer? _visualTimer;
+  static const int _timeoutSeconds = 30; // Tempo total em segundos
+  int _remainingSeconds = _timeoutSeconds;
+
+  // FRASES DE RESTAURANTE
+  static const Map<String, List<String>> _restaurantPhrases = {
     'Comida Positiva': ['Bem Temperada', 'Comida quente', 'Boa Variedade'],
-    'Comida Negativa': ['Sem Sal/Insossa', 'Comida Fria', 'Aparência Estranha'],
+    'Comida Negativa': ['Gosto Ruim', 'Comida Fria', 'Aparência Estranha'],
     'Serviço Positiva': [
       'Funcionários Atenciosos',
       'Reposição Rápida',
@@ -3184,9 +3375,33 @@ class _RatingScreenState extends State<RatingScreen> {
     ],
   };
 
+  // FRASES DE AMBIENTAÇÃO DA EMPRESA
+  static const Map<String, List<String>> _orgPhrases = {
+    'Acolhimento e Recepção Positiva': [
+      'Achei acolhedor',
+      'Me senti bem-vindo(a)',
+    ],
+    'Acolhimento e Recepção Negativa': [
+      'Melhorar recepção',
+      'Melhorar acolhimento',
+    ],
+    'Organização Positiva': ['Dia organizado', 'Fluxo claro'],
+    'Organização Negativa': ['Faltou orientação', 'Fluxo confuso'],
+    'Conteúdo Apresentado Positiva': ['Conteúdo legal', 'Boas apresentações'],
+    'Conteúdo Apresentado Negativa': [
+      'Conteúdo à melhorar',
+      'Informações superficiais',
+    ],
+  };
+
+  // Getter que seleciona baseado na constante do AppData
+  Map<String, List<String>> get _phrases =>
+      AppData.appFunctionality == 1 ? _restaurantPhrases : _orgPhrases;
+
   @override
   void initState() {
     super.initState();
+    _startVisualTimer();
 
     // INICIA O TIMER QUANDO A TELA DE FEEDBACKS É ABERTA
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -3207,8 +3422,38 @@ class _RatingScreenState extends State<RatingScreen> {
 
   @override
   void dispose() {
+    _visualTimer?.cancel();
     _commentController.dispose();
     super.dispose();
+  }
+
+  // 2. LÓGICA DO TIMER
+  void _startVisualTimer() {
+    _visualTimer?.cancel();
+    _visualTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+
+      setState(() {
+        if (_remainingSeconds > 0) {
+          _remainingSeconds--;
+        } else {
+          // TEMPO ACABOU: Cancela e volta para o início
+          timer.cancel();
+          widget.onBackToHome();
+          // Garante a navegação fechando a tela atual
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        }
+      });
+    });
+  }
+
+  // 3. REINICIAR TIMER AO INTERAGIR
+  void _resetLocalTimer() {
+    setState(() {
+      _remainingSeconds = _timeoutSeconds;
+    });
+    // Continua resetando o timer global do pai para não conflitar
+    _resetParentTimer(context);
   }
 
   void _handlePhraseSelection(String phrase) {
@@ -3284,7 +3529,7 @@ class _RatingScreenState extends State<RatingScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Por favor, selecione uma nota geral (estrelas) antes de enviar.',
+            'Por favor, selecione uma nota geral (reação) antes de enviar.',
           ),
         ),
       );
@@ -3323,48 +3568,38 @@ class _RatingScreenState extends State<RatingScreen> {
 
     // --- Se passou pela validação, continua o processo normal de envio ---
 
-    final currentShift = widget.currentShift;
-
-    // COLETAR TODOS OS DADOS DA AVALIAÇÃO
-    final comment = _commentController.text;
-
-    // Adicionar o registro de transação ao AppData (que salva automaticamente)
-    appData.addEvaluationRecord(
-      star: _selectedStars,
-      shift: currentShift,
-      // Usamos o método isPositive do AppData para classificar as frases:
+    // Atualiza o último registro (que foi criado na tela anterior)
+    appData.updateLastEvaluation(
+      newStarRating: _selectedStars, // Caso ele tenha mudado as estrelas aqui
       positiveFeedbacks: _pendingDetailedPhrases
           .where((p) => appData.isPositive(p))
           .toSet(),
       negativeFeedbacks: _pendingDetailedPhrases
           .where((p) => !appData.isPositive(p))
           .toSet(),
-      comment: _commentController.text, // Adiciona o comentário
+      comment: _commentController.text,
     );
 
-    // 3. Feedback e Reset
+    // Feedback visual
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Obrigado pela avaliação!'),
+        content: Text('Feedback(s) adicionado(s) com sucesso!'),
         duration: Duration(seconds: 2),
       ),
     );
 
+    // Limpa e volta
     setState(() {
       _selectedStars = 0;
       _pendingDetailedPhrases.clear();
       _commentController.clear();
     });
+
+    // Volta para a home
     widget.onBackToHome();
 
-    // Voltar para a tela inicial após 1 segundo
-    Future.delayed(const Duration(milliseconds: 1000), () {
-      // Chama o callback para voltar à home
-      widget.onBackToHome();
-
-      // GARANTE que volta para a aba de avaliações (índice 0)
+    Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) {
-        // Navega de volta para a tela inicial
         Navigator.of(context).popUntil((route) => route.isFirst);
       }
     });
@@ -3381,6 +3616,28 @@ class _RatingScreenState extends State<RatingScreen> {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 360;
+
+    // LÓGICA DE VALIDAÇÃO DO BOTÃO
+    // Verifica se tem algum botão clicado OU algum texto digitado
+    bool hasContent =
+        _pendingDetailedPhrases.isNotEmpty ||
+        _commentController.text.trim().isNotEmpty;
+
+    // O botão só habilita se tiver conteúdo, não importa a nota.
+    bool isButtonEnabled = hasContent;
+
+    // --- CÁLCULO DA BARRA DE TEMPO ---
+    double progress = _remainingSeconds / _timeoutSeconds;
+
+    // Define a cor baseada na urgência
+    Color progressColor;
+    if (_remainingSeconds > 10) {
+      progressColor = Colors.green; // Tempo tranquilo
+    } else if (_remainingSeconds > 5) {
+      progressColor = Colors.amber; // Atenção
+    } else {
+      progressColor = Colors.red; // Acabando!
+    }
 
     return DefaultTabController(
       initialIndex: widget.initialTabIndex,
@@ -3417,6 +3674,12 @@ class _RatingScreenState extends State<RatingScreen> {
             // CONTEÚDO RESPONSIVO
             Column(
               children: [
+                LinearProgressIndicator(
+                  value: progress,
+                  backgroundColor: Colors.grey.shade300,
+                  valueColor: AlwaysStoppedAnimation<Color>(progressColor),
+                  minHeight: 6, // Altura da barra
+                ),
                 // TAB BAR RESPONSIVO
                 Container(
                   color: Colors.transparent,
@@ -3443,13 +3706,19 @@ class _RatingScreenState extends State<RatingScreen> {
                     children: [
                       DetailedFeedbackTab(
                         sentiment: 'Positiva',
-                        onPhraseSelected: _handlePhraseSelection,
+                        onPhraseSelected: (phrase) {
+                          _handlePhraseSelection(phrase);
+                          _resetLocalTimer();
+                        },
                         selectedPhrases: _pendingDetailedPhrases,
                         phrasesMap: _phrases, // Passando o mapa
                       ),
                       DetailedFeedbackTab(
                         sentiment: 'Negativa',
-                        onPhraseSelected: _handlePhraseSelection,
+                        onPhraseSelected: (phrase) {
+                          _handlePhraseSelection(phrase);
+                          _resetLocalTimer();
+                        },
                         selectedPhrases: _pendingDetailedPhrases,
                         phrasesMap: _phrases, // Passando o mapa
                       ),
@@ -3471,8 +3740,10 @@ class _RatingScreenState extends State<RatingScreen> {
                           'Digite aqui suas sugestões, elogios ou críticas...',
                     ),
                     onChanged: (value) {
+                      _resetLocalTimer();
                       // REINICIA TIMER A CADA CARACTERE DIGITADO
                       _resetParentTimer(context);
+                      setState(() {});
                     },
                   ),
                 ),
@@ -3481,9 +3752,19 @@ class _RatingScreenState extends State<RatingScreen> {
                 Padding(
                   padding: EdgeInsets.all(screenWidth * 0.04),
                   child: ElevatedButton(
-                    onPressed: () => _sendRating(context),
+                    // SE isButtonEnabled for falso, passamos 'null', o que desabilita o botão nativamente
+                    onPressed: isButtonEnabled
+                        ? () => _sendRating(context)
+                        : null,
+
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color.fromARGB(255, 111, 136, 63),
+                      // Cor de fundo: Verde se habilitado, Cinza se desabilitado
+                      backgroundColor: isButtonEnabled
+                          ? const Color.fromARGB(255, 111, 136, 63)
+                          : Colors.grey.shade400,
+
+                      foregroundColor: Colors.white, // Cor do texto
+
                       padding: EdgeInsets.symmetric(
                         vertical: isSmallScreen ? 12 : 15,
                         horizontal: 20,
@@ -3492,12 +3773,16 @@ class _RatingScreenState extends State<RatingScreen> {
                         double.infinity,
                         isSmallScreen ? 50 : 60,
                       ),
+                      // Remove efeito de elevação se estiver desabilitado
+                      elevation: isButtonEnabled ? 2 : 0,
                     ),
                     child: Text(
-                      'Enviar Avaliação',
+                      'Enviar feedback adicional',
                       style: TextStyle(
                         fontSize: isSmallScreen ? 18 : 22,
-                        color: Colors.white,
+                        color: isButtonEnabled
+                            ? Colors.white
+                            : Colors.grey.shade700,
                       ),
                     ),
                   ),
@@ -3532,7 +3817,7 @@ class DetailedFeedbackTab extends StatelessWidget {
   // Frases de feedback
   final Map<String, List<String>> _phrases = const {
     'Comida Positiva': ['Bem Temperada', 'Comida quente', 'Boa Variedade'],
-    'Comida Negativa': ['Sem Sal/Insossa', 'Comida Fria', 'Aparência Estranha'],
+    'Comida Negativa': ['Gosto Ruim', 'Comida Fria', 'Aparência Estranha'],
     'Serviço Positiva': [
       'Funcionários Atenciosos',
       'Reposição Rápida',
@@ -3565,44 +3850,59 @@ class DetailedFeedbackTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // CATEGORIAS RESPONSIVAS
+          // CATEGORIAS RESTAURANTE E AMBIENTAÇÃO DA EMPRESA
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: ['Comida', 'Serviço', 'Ambiente']
-                .map(
-                  (c) => Expanded(
-                    child: Center(
-                      child: Text(
-                        c,
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: isSmallScreen ? 14 : 18,
+            // SELECIONA A LISTA BASEADO NA CONSTANTE
+            children:
+                (AppData.appFunctionality == 1
+                        ? ['Comida', 'Serviço', 'Ambiente']
+                        : [
+                            'Acolhimento e Recepção',
+                            'Organização',
+                            'Conteúdo Apresentado',
+                          ])
+                    .map(
+                      (c) => Expanded(
+                        child: Center(
+                          child: Text(
+                            c,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: isSmallScreen ? 14 : 18,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                )
-                .toList(),
+                    )
+                    .toList(),
           ),
 
           SizedBox(height: screenWidth * 0.04),
 
-          // BOTÕES RESPONSIVOS
+          // BOTÕES RESTAURANTE E AMBIENTAÇÃO DA EMPRESA
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: ['Comida', 'Serviço', 'Ambiente']
-                .map(
-                  (category) => Expanded(
-                    child: CategoryFeedbackColumn(
-                      category: category,
-                      sentiment: sentiment,
-                      phrases: phrasesMap,
-                      onPhraseSelected: onPhraseSelected,
-                      selectedPhrases: selectedPhrases,
-                    ),
-                  ),
-                )
-                .toList(),
+            children:
+                (AppData.appFunctionality == 1
+                        ? ['Comida', 'Serviço', 'Ambiente']
+                        : [
+                            'Acolhimento e Recepção',
+                            'Organização',
+                            'Conteúdo Apresentado',
+                          ])
+                    .map(
+                      (category) => Expanded(
+                        child: CategoryFeedbackColumn(
+                          category: category,
+                          sentiment: sentiment,
+                          phrases: phrasesMap,
+                          onPhraseSelected: onPhraseSelected,
+                          selectedPhrases: selectedPhrases,
+                        ),
+                      ),
+                    )
+                    .toList(),
           ),
         ],
       ),
@@ -3831,27 +4131,10 @@ class _StatisticsScreenState extends State<StatisticsScreen>
   }
 
   bool _isPositiveFeedback(String phrase) {
-    const phrasesMap = {
-      'Bem Temperada': true,
-      'Comida quente': true,
-      'Boa Variedade': true,
-      'Sem Sal/Insossa': false,
-      'Comida Fria': false,
-      'Aparência Estranha': false,
-      'Funcionários Atenciosos': true,
-      'Reposição Rápida': true,
-      'Organização Eficiente': true,
-      'Atendimento Lento': false,
-      'Demora na Limpeza': false,
-      'Filas Grandes': false,
-      'Ambiente Limpo': true,
-      'Climatização Boa': true,
-      'Ambiente Silencioso': true,
-      'Ambiente Sujo': false,
-      'Climatização Ruim': false,
-      'Ambiente Barulhento': false,
-    };
-    return phrasesMap[phrase] ?? false;
+    // Usa o Provider para acessar a lógica centralizada no AppData
+    // Isso evita ter que duplicar os mapas aqui dentro novamente.
+    final appData = Provider.of<AppData>(context, listen: false);
+    return appData.isPositive(phrase);
   }
 
   // MÉTODO PARA CONVERTER NÚMERO PARA NOME DA CATEGORIA
@@ -4915,14 +5198,85 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
     _selectedStars = widget.selectedRating ?? 0;
   }
 
+  // MANIPULADOR DE CLIQUE NOS EMOJIS
   void _handleEmojiClick(int star) {
     setState(() {
       _selectedStars = star;
     });
 
-    Future.delayed(const Duration(milliseconds: 300), () {
+    // 1. SALVA IMEDIATAMENTE O VOTO BÁSICO
+    final appData = Provider.of<AppData>(context, listen: false);
+
+    appData.addEvaluationRecord(
+      star: star,
+      shift: widget.currentShift,
+      positiveFeedbacks: {},
+      negativeFeedbacks: {},
+      comment: '',
+    );
+
+    // 2. EXIBE O POP-UP (SnackBar) PERSONALIZADO
+    // Remove qualquer aviso anterior para não acumular
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+    if (star >= 3) {
+      // --- MENSAGEM PARA EXCELENTE, BOM ou NEUTRO ---
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: const [
+              Icon(Icons.check_circle, color: Colors.white),
+              SizedBox(width: 12),
+              Text(
+                'Obrigado pela sua avaliação!',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.green.shade700, // Verde Sucesso
+          duration: const Duration(milliseconds: 1500), // Dura menos tempo
+          behavior: SnackBarBehavior.floating, // Flutuante fica mais bonito
+          margin: const EdgeInsets.all(20), // Margem ao redor
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20), // Bordas arredondadas
+          ),
+        ),
+      );
+    } else {
+      // --- MENSAGEM CHAMATIVA PARA RUIM ou PÉSSIMO ---
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: const [
+              Icon(Icons.rate_review_outlined, color: Colors.white, size: 28),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Que pena! Por favor, nos diga o motivo na próxima tela.',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.red.shade800, // Vermelho Chamativo
+          duration: const Duration(milliseconds: 2500), // Dura mais tempo
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(20),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+        ),
+      );
+    }
+
+    // 3. NAVEGA PARA A TELA DE DETALHES
+    // Aumentei um pouco o tempo (800ms) para a pessoa ler o pop-up antes de mudar
+    Future.delayed(const Duration(milliseconds: 800), () {
       final int initialTab = (star >= 4) ? 0 : 1;
-      widget.onRatingSelected(star, initialTab);
+      widget.onRatingSelected(
+        star,
+        initialTab,
+      ); // Navega para a tela de detalhes
     });
   }
 
@@ -4969,11 +5323,20 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // TÍTULO RESPONSIVO
                   Text(
-                    'Qual sua experiência geral?',
+                    // TÍTULO DINÂMICO PARA RESTAURANTE OU AMBIENTAÇÃO DE EMPRESA
+                    AppData.appFunctionality == 1
+                        ? 'Qual sua experiência geral?' // Texto para Restaurante
+                        : 'Qual a sua experiência geral com a ambientação da empresa?', // Texto para Empresa
                     style: TextStyle(
-                      fontSize: isSmallScreen ? 28 : (isLargeScreen ? 44 : 36),
+                      // Ajuste opcional: Se o texto da empresa for muito longo,
+                      // você pode reduzir levemente a fonte aqui se necessário,
+                      // mas a lógica abaixo mantém o padrão original.
+                      fontSize: isSmallScreen
+                          ? 24
+                          : (isLargeScreen
+                                ? 40
+                                : 32), // Reduzi um pouquinho pois o texto novo é maior
                       fontWeight: FontWeight.bold,
                     ),
                     textAlign: TextAlign.center,
