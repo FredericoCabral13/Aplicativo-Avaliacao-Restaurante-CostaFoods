@@ -40,7 +40,7 @@ class AppData extends ChangeNotifier {
   // CONFIGURAÇÃO GERAL PARA DEFINIR A FUNCIONALIDADE DO APP
   // 1 = Restaurante (Comida, Serviço, Ambiente)
   // 2 = Ambientação da Empresa (Acolhimento, Organização, Conteúdo)
-  static const int appFunctionality = 1;
+  static const int appFunctionality = 2;
   // =============================================================
 
   // LISTA DE UNIDADES DA EMPRESA
@@ -2757,13 +2757,43 @@ class _AppTabsControllerState extends State<AppTabsController> {
 
   // USUÁRIO QUER PERMANECER
   void _stayOnCurrentScreen() {
+    if (_isResettingFromStay) return;
+
+    _isResettingFromStay = true;
     _closeInactivityDialog();
-    _resetTimerOnInteraction(); // Reinicia o timer principal
+
+    // RESETA O TIMER DA TELA DE FEEDBACKS
+    if (_currentFeedbackScreen != null && mounted) {
+      _currentFeedbackScreen!.resetTimerFromOutside();
+    }
+
+    setState(() {
+      _inactivityWarningShown = false;
+      _currentFeedbackScreen = null;
+    });
+
+    _resetTimerOnInteraction();
+
+    // Libera o controle após um tempo
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        setState(() {
+          _isResettingFromStay = false;
+        });
+      }
+    });
   }
 
   // USUÁRIO QUER VOLTAR (OU TEMPO ESGOTOU)
   void _closeInactivityDialogAndReturnHome() {
     _closeInactivityDialog();
+
+    // Limpa a referência ao voltar para home
+    setState(() {
+      _inactivityWarningShown = false;
+      _currentFeedbackScreen = null;
+    });
+
     _resetToHomeScreen();
   }
 
@@ -2772,38 +2802,47 @@ class _AppTabsControllerState extends State<AppTabsController> {
     _countdownTimer?.cancel();
     setState(() {
       _showInactivityDialog = false;
-      _countdownSeconds = 10;
+      _countdownSeconds = 3;
     });
+  }
+
+  // Variável para controlar se o aviso já foi mostrado
+  bool _inactivityWarningShown = false;
+  _RatingScreenState?
+  _currentFeedbackScreen; // Referência para a tela de feedbacks
+  bool _isResettingFromStay = false; // CONTROLE PARA EVITAR LOOP
+
+  // MÉTODO PÚBLICO PARA MOSTRAR O AVISO
+  void showInactivityWarning(_RatingScreenState feedbackScreen) {
+    if (!_inactivityWarningShown && mounted) {
+      setState(() {
+        _inactivityWarningShown = true;
+        _showInactivityDialog = true;
+        _countdownSeconds = 3;
+        _currentFeedbackScreen = feedbackScreen; // Guarda a referência
+      });
+
+      _startCountdownTimer();
+    }
   }
 
   // VOLTA PARA TELA INICIAL (COM FECHAMENTO DE DIALOGS)
   void _resetToHomeScreen() {
-    _closeInactivityDialog(); // FECHA O DIALOG SE ESTIVER ABERTO
+    _closeInactivityDialog();
     Navigator.of(context).popUntil((route) => route.isFirst);
     ScaffoldMessenger.of(context).clearSnackBars();
-
-    // CANCELA TIMERS
-    // _keyboardInactivityTimer?.cancel();
-
-    // // LIMPA CONTROLLER DE SENHA
-    // _passwordController.clear();
-
-    // ScaffoldMessenger.of(context).clearSnackBars();
 
     setState(() {
       _selectedIndex = 0;
       _currentShift = _calculateDefaultShift();
       _selectedRatingFromHome = null;
       _initialTabIndex = null;
-    }); // Garante que a barra continue escondida
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      _inactivityWarningShown = false;
+      _currentFeedbackScreen = null;
+      _isResettingFromStay = false;
+    });
 
-    // ScaffoldMessenger.of(context).showSnackBar(
-    //   const SnackBar(
-    //     content: Text('Voltando para tela inicial por inatividade'),
-    //     duration: Duration(seconds: 2),
-    //   ),
-    // );
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   }
 
   // MÈTODO PÚBLICO
@@ -2813,14 +2852,30 @@ class _AppTabsControllerState extends State<AppTabsController> {
 
   // MÉTODO PRIVADO TAMBÉM
   void _resetTimerOnInteraction() {
-    // SE HÁ DIALOG DE INATIVIDADE ABERTO, FECHA E REINICIA
     if (_showInactivityDialog) {
       _closeInactivityDialog();
     }
 
+    // Se o pop-up foi fechado por interação, reseta o timer
+    if (_currentFeedbackScreen != null && mounted && !_isResettingFromStay) {
+      _currentFeedbackScreen!.resetTimerFromOutside();
+    }
+
+    setState(() {
+      _inactivityWarningShown = false;
+      _currentFeedbackScreen = null;
+    });
+
     _inactivityTimer?.cancel();
-    _startInactivityTimer(); // Reforça esconder a barra caso ela tenha aparecido
+    _startInactivityTimer();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
+
+  void resetInactivityWarning() {
+    setState(() {
+      _inactivityWarningShown = false;
+      _currentFeedbackScreen = null;
+    });
   }
 
   // MOSTRA O DIALOG DE SENHA COM TECLADO NATIVO
@@ -3346,8 +3401,9 @@ class _RatingScreenState extends State<RatingScreen> {
 
   // 1. VARIÁVEIS DO TEMPORIZADOR VISUAL
   Timer? _visualTimer;
-  static const int _timeoutSeconds = 30; // Tempo total em segundos
+  static const int _timeoutSeconds = 10; // Tempo total em segundos
   int _remainingSeconds = _timeoutSeconds;
+  bool _isResettingFromOutside = false; // CONTROLE PARA EVITAR LOOP
 
   // FRASES DE RESTAURANTE
   static const Map<String, List<String>> _restaurantPhrases = {
@@ -3427,24 +3483,61 @@ class _RatingScreenState extends State<RatingScreen> {
     super.dispose();
   }
 
+  void resetTimerFromOutside() {
+    if (mounted && !_isResettingFromOutside) {
+      _isResettingFromOutside = true;
+
+      setState(() {
+        _remainingSeconds = _timeoutSeconds;
+      });
+
+      // Pequeno delay para evitar chamadas simultâneas
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) {
+          setState(() {
+            _isResettingFromOutside = false;
+          });
+        }
+      });
+
+      _resetParentTimer(context);
+    }
+  }
+
   // 2. LÓGICA DO TIMER
   void _startVisualTimer() {
     _visualTimer?.cancel();
     _visualTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) return;
 
+      // NÃO EXECUTA SE ESTIVER RESETANDO
+      if (_isResettingFromOutside) return;
+
       setState(() {
         if (_remainingSeconds > 0) {
           _remainingSeconds--;
         } else {
-          // TEMPO ACABOU: Cancela e volta para o início
           timer.cancel();
           widget.onBackToHome();
-          // Garante a navegação fechando a tela atual
           Navigator.of(context).popUntil((route) => route.isFirst);
         }
       });
+
+      // Mostrar aviso quando faltarem 3 segundos
+      if (_remainingSeconds == 3 && mounted) {
+        _showInactivityWarning();
+      }
     });
+  }
+
+  // MÉTODO PARA MOSTRAR O POP-UP DE AVISO
+  void _showInactivityWarning() {
+    final appTabsControllerState = context
+        .findAncestorStateOfType<_AppTabsControllerState>();
+
+    if (appTabsControllerState != null && mounted) {
+      appTabsControllerState.showInactivityWarning(this);
+    }
   }
 
   // 3. REINICIAR TIMER AO INTERAGIR
@@ -3457,6 +3550,7 @@ class _RatingScreenState extends State<RatingScreen> {
   }
 
   void _handlePhraseSelection(String phrase) {
+    if (_isResettingFromOutside) return; // PREVINE AÇÕES DURANTE RESET
     setState(() {
       // 1. Identificar a categoria da frase clicada (Comida, Serviço ou Ambiente)
       String? clickedCategory;
@@ -3501,6 +3595,7 @@ class _RatingScreenState extends State<RatingScreen> {
         _pendingDetailedPhrases.add(phrase);
       }
     });
+    _resetLocalTimer();
   }
 
   void _handleStarClick(int star, BuildContext tabContext) {
@@ -3631,9 +3726,9 @@ class _RatingScreenState extends State<RatingScreen> {
 
     // Define a cor baseada na urgência
     Color progressColor;
-    if (_remainingSeconds > 10) {
+    if (_remainingSeconds > 6) {
       progressColor = Colors.green; // Tempo tranquilo
-    } else if (_remainingSeconds > 5) {
+    } else if (_remainingSeconds > 2) {
       progressColor = Colors.amber; // Atenção
     } else {
       progressColor = Colors.red; // Acabando!
@@ -3740,10 +3835,12 @@ class _RatingScreenState extends State<RatingScreen> {
                           'Digite aqui suas sugestões, elogios ou críticas...',
                     ),
                     onChanged: (value) {
-                      _resetLocalTimer();
-                      // REINICIA TIMER A CADA CARACTERE DIGITADO
-                      _resetParentTimer(context);
-                      setState(() {});
+                      if (!_isResettingFromOutside) {
+                        // PREVINE AÇÕES DURANTE RESET
+                        _resetLocalTimer();
+                        _resetParentTimer(context);
+                        setState(() {});
+                      }
                     },
                   ),
                 ),
