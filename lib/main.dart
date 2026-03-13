@@ -22,6 +22,8 @@ import 'dart:convert'; // IMPORTACAO PARA UTF-8
 
 import 'package:permission_handler/permission_handler.dart'; // PARA PERMISSÕES
 
+import 'package:wakelock_plus/wakelock_plus.dart'; // PARA MANTER A TELA LIGADA
+
 // Definido uma ÚNICA vez no topo do arquivo
 typedef PhraseSelectedCallback = void Function(String phrase);
 
@@ -40,7 +42,7 @@ class AppData extends ChangeNotifier {
   // CONFIGURAÇÃO GERAL PARA DEFINIR A FUNCIONALIDADE DO APP
   // 1 = Restaurante (Comida, Serviço, Ambiente)
   // 2 = Ambientação da Empresa (Acolhimento, Organização, Conteúdo)
-  static const int appFunctionality = 2;
+  static const int appFunctionality = 1;
   // =============================================================
 
   // LISTA DE UNIDADES DA EMPRESA
@@ -2680,6 +2682,7 @@ class _AppTabsControllerState extends State<AppTabsController> {
     _startInactivityTimer(); // INICIA O TIMER// Força o modo imersivo (esconde botões do Android) sempre que a tela inicia
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _enableKioskMode();
+    WakelockPlus.enable(); // Dizer ao tablet para NUNCA desligar a tela enquanto o app estiver aberto
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkAndRequestPermission();
     });
@@ -2711,6 +2714,7 @@ class _AppTabsControllerState extends State<AppTabsController> {
     _keyboardInactivityTimer?.cancel();
     _passwordController.dispose(); // DISPOSE DO CONTROLLER
     _countdownTimer?.cancel(); // CANCELA TIMER DO CONTADOR
+    WakelockPlus.disable(); // Libera a tela para apagar normalmente se o app for fechado
     super.dispose();
   }
 

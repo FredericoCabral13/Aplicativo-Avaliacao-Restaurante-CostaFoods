@@ -20,6 +20,7 @@ dependencies:
   flutter_native_splash: ^2.4.7
   share_plus: ^7.2.1  # Para compartilhar arquivos
   url_launcher: ^6.2.2  # Para abrir gerenciador de arquivos
+  wakelock_plus: ^1.2.8 # Para manter a tela ligada durante o uso do aplicativo
   
 dev_dependencies:
   flutter_test:
