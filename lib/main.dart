@@ -24,6 +24,8 @@ import 'package:permission_handler/permission_handler.dart'; // PARA PERMISSÕES
 
 import 'package:wakelock_plus/wakelock_plus.dart'; // PARA MANTER A TELA LIGADA
 
+import 'package:http/http.dart' as http; //
+
 // Definido uma ÚNICA vez no topo do arquivo
 typedef PhraseSelectedCallback = void Function(String phrase);
 
@@ -44,6 +46,22 @@ class AppData extends ChangeNotifier {
   // 2 = Ambientação da Empresa (Acolhimento, Organização, Conteúdo)
   static const int appFunctionality = 1;
   // =============================================================
+
+  // --- FUNÇÕES PARA DEFINIR O NOME DOS ARQUIVOS ---
+
+  // Nome do banco de dados principal (que será enviado ao PC)
+  String get _dbFileName {
+    return appFunctionality == 1
+        ? 'avaliacoes_restaurante.csv'
+        : 'avaliacoes_ambientacao.csv';
+  }
+
+  // Prefixo para os arquivos exportados/compartilhados manualmente
+  String get _exportPrefix {
+    return appFunctionality == 1
+        ? 'relatorio_restaurante'
+        : 'relatorio_ambientacao';
+  }
 
   // LISTA DE UNIDADES DA EMPRESA
   final List<String> companyUnits = [
@@ -361,6 +379,23 @@ class AppData extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _sendDataToComputer(Map<String, dynamic> record) async {
+    // ATENÇÃO: Coloque o IP do computador que está rodando o servidor Python
+    final url = Uri.parse('http://10.1.32.181:5000/receber_avaliacao');
+
+    try {
+      await http.post(
+        url,
+        headers: {'Content-Type': 'application/json; charset=UTF-8'},
+        body: jsonEncode(record),
+      );
+      print('Dados enviados para o PC com sucesso!');
+    } catch (e) {
+      print('Erro ao enviar dados para o PC: $e');
+      // Falhou silenciosamente. O tablet continuará funcionando e salvando localmente.
+    }
+  }
+
   // ===============================================================
   // MÉTODOS DE AVALIAÇÃO E LEITURA
   // ===============================================================
@@ -401,6 +436,9 @@ class AppData extends ChangeNotifier {
     _recalculateCounts();
     notifyListeners();
     saveDataToCSV();
+
+    // NOVA LINHA: Envia para o PC
+    _sendDataToComputer(newRecord);
   }
 
   // ATUALIZA O ÚLTIMO REGISTRO SALVO
@@ -435,6 +473,9 @@ class AppData extends ChangeNotifier {
     _recalculateCounts();
     notifyListeners();
     saveDataToCSV();
+
+    // NOVA LINHA: Envia a avaliação atualizada para o PC
+    _sendDataToComputer(lastRecord);
   }
 
   // Método para classificar o feedback (usado no _sendRating)
@@ -531,14 +572,14 @@ class AppData extends ChangeNotifier {
         await directory.create(recursive: true);
       }
 
-      // 3. Define um nome FIXO para o arquivo.
       // Isso garante que ao reinstalar o app, ele encontre o arquivo antigo.
-      return '${directory.path}/avaliacoes_costa_foods_db.csv';
+      // USA O NOME DINÂMICO
+      return '${directory.path}/$_dbFileName';
     }
 
     // Fallback para iOS ou outros (mantém o padrão)
     final directory = await getApplicationDocumentsDirectory();
-    return '${directory.path}/avaliacoes_registros.csv';
+    return '${directory.path}/$_dbFileName';
   }
 
   Future<void> saveDataToCSV() async {
@@ -597,6 +638,9 @@ class AppData extends ChangeNotifier {
     final fullData = [...bom, ...encodedData];
 
     await file.writeAsBytes(fullData, flush: true);
+
+    // NOVA LINHA AQUI: Assim que terminar de salvar localmente, envia uma cópia para o PC
+    _sendCSVToComputer();
   }
 
   Future<void> loadDataFromCSV() async {
@@ -1338,7 +1382,7 @@ class AppData extends ChangeNotifier {
         RegExp(r'[^0-9]'),
         '_',
       );
-      final fileName = 'avaliacoes_costa_foods_$timestamp.csv';
+      final fileName = '${_exportPrefix}_$timestamp.csv';
       final file = File('${downloadsDir.path}/$fileName');
 
       // SALVA COM UTF-8
@@ -1384,7 +1428,7 @@ class AppData extends ChangeNotifier {
   Future<void> _saveToDocuments(BuildContext context, String csvData) async {
     try {
       final documentsDir = await getApplicationDocumentsDirectory();
-      final fileName = 'avaliacoes_costa_foods_${_getFormattedDate()}.csv';
+      final fileName = '${_exportPrefix}_${_getFormattedDate()}.csv';
       final file = File('${documentsDir.path}/$fileName');
 
       await file.writeAsString(csvData, flush: true);
@@ -1429,7 +1473,7 @@ class AppData extends ChangeNotifier {
   Future<void> _shareFile(BuildContext context, String csvData) async {
     try {
       final directory = await getTemporaryDirectory();
-      final file = File('${directory.path}/restaurante_costa_foods.csv');
+      final file = File('${directory.path}/$_exportPrefix.csv');
       // SALVA COM UTF-8 E BOM
       final bom = utf8.encode('\uFEFF');
       final encodedData = utf8.encode(csvData);
@@ -1446,7 +1490,7 @@ class AppData extends ChangeNotifier {
         ], // ESPECIFICA CHARSET
         text: shareMessage, // MENSAGEM PERSONALIZADA
         subject:
-            '(${_selectedUnit ?? 'Não definida'}) Avaliações Restaurante Costa Foods - Relatório', // ASSUNTO
+            '(${_selectedUnit ?? 'Não definida'}) Relatório de Avaliações - ${appFunctionality == 1 ? 'Restaurante' : 'Ambientação'}', // ASSUNTO
       );
     } catch (e) {
       if (context.mounted) {
@@ -1574,7 +1618,7 @@ Arquivo contém dados completos das avaliações dos clientes.
 
       // LÓGICA CONDICIONAL PARA RESTAURANTE E AMBIENTAÇÃO DA EMPRESA
       String turno;
-      if (appFunctionality == 1) {
+      if (appFunctionality == 2) {
         turno = getPeriodName(record['turno'] as int);
       } else {
         turno = 'Ambientação';
@@ -1597,6 +1641,40 @@ Arquivo contém dados completos das avaliações dos clientes.
     }
 
     return const ListToCsvConverter(fieldDelimiter: ';').convert(csvData);
+  }
+
+  Future<void> _sendCSVToComputer() async {
+    try {
+      // 1. Pega o caminho exato do arquivo CSV que acabou de ser salvo no tablet
+      final filePath = await _getFilePath();
+      final file = File(filePath);
+
+      if (!await file.exists()) {
+        print('Arquivo CSV ainda não existe localmente.');
+        return;
+      }
+
+      // ATENÇÃO: Coloque o IP do computador que está rodando o servidor Python
+      // Note que a rota agora é /upload_csv
+      final url = Uri.parse('http://10.1.32.181:5000/upload_csv');
+
+      // 2. Cria uma requisição do tipo "Multipart" (Padrão web para upload de arquivos)
+      var request = http.MultipartRequest('POST', url);
+
+      // 3. Anexa o arquivo CSV na requisição
+      request.files.add(await http.MultipartFile.fromPath('file', file.path));
+
+      // 4. Dispara o envio
+      var response = await request.send();
+
+      if (response.statusCode == 200) {
+        print('✅ Arquivo CSV inteiro enviado para o PC com sucesso!');
+      } else {
+        print('❌ Falha ao enviar CSV. Código do erro: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Erro de conexão ao enviar CSV (PC desligado ou fora da rede): $e');
+    }
   }
 
   // MÉTODO PARA DETERMINAR STATUS DE SATISFAÇÃO

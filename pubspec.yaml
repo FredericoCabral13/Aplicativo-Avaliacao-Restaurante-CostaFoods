@@ -21,6 +21,7 @@ dependencies:
   share_plus: ^7.2.1  # Para compartilhar arquivos
   url_launcher: ^6.2.2  # Para abrir gerenciador de arquivos
   wakelock_plus: ^1.2.8 # Para manter a tela ligada durante o uso do aplicativo
+  http: ^1.2.0
   
 dev_dependencies:
   flutter_test:
