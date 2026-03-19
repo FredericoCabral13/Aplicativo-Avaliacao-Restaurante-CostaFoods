@@ -44,7 +44,10 @@ class AppData extends ChangeNotifier {
   // CONFIGURAÇÃO GERAL PARA DEFINIR A FUNCIONALIDADE DO APP
   // 1 = Restaurante (Comida, Serviço, Ambiente)
   // 2 = Ambientação da Empresa (Acolhimento, Organização, Conteúdo)
-  static const int appFunctionality = 1;
+  int? _appFunctionality;
+
+  // Getter seguro com fallback para 1 (Restaurante)
+  int get appFunctionality => _appFunctionality ?? 1;
   // =============================================================
 
   // --- FUNÇÕES PARA DEFINIR O NOME DOS ARQUIVOS ---
@@ -275,13 +278,10 @@ class AppData extends ChangeNotifier {
 
   // INICIALIZAÇÃO DO APP
   Future<void> _initializeApp() async {
-    // 1. Tenta pedir permissão logo ao abrir
+    // Tenta pedir permissão logo ao abrir
     await _requestStoragePermission();
 
-    // 2. Carrega os dados (se tiver permissão, vai ler do arquivo antigo; se não, começa vazio)
-    await loadDataFromCSV();
-
-    // 3. Verifica se é a primeira vez (lógica do tutorial/unidade)
+    // Verifica se é a primeira vez (lógica do tutorial/unidade)
     await _checkFirstTimeOpen();
   }
 
@@ -317,8 +317,16 @@ class AppData extends ChangeNotifier {
       // Não é a primeira vez - carrega unidade e uniforme salvos
       _selectedUnit = prefs.getString('selected_unit');
       _selectedUniformType = prefs.getString('selected_uniform_type');
+      _appFunctionality = prefs.getInt(
+        'app_functionality',
+      ); // Carrega a funcionalidade
       _showUnitSelection = false;
       _showUniformSelection = false;
+
+      // Só carrega o CSV se já houver uma funcionalidade salva!
+      if (_appFunctionality != null) {
+        await loadDataFromCSV();
+      }
     }
   }
 
@@ -353,6 +361,30 @@ class AppData extends ChangeNotifier {
     await prefs.setString('selected_unit', 'Matriz');
     await prefs.setString('selected_uniform_type', uniformType);
 
+    notifyListeners();
+  }
+
+  // SELECIONA A FUNCIONALIDADE (Restaurante ou Empresa)
+  Future<void> selectFunctionality(int functionality) async {
+    _appFunctionality = functionality;
+
+    // Salva a escolha na memória do tablet
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('app_functionality', functionality);
+
+    // Agora que sabemos a funcionalidade, carregamos o CSV correto!
+    await loadDataFromCSV();
+
+    notifyListeners();
+  }
+
+  // VOLTAR NA TELA DE CONFIGURAÇÃO
+  void goBackToPreviousSetupStep() {
+    if (_selectedUnit == 'Matriz') {
+      _showUniformSelection = true;
+    } else {
+      _showUnitSelection = true;
+    }
     notifyListeners();
   }
 
@@ -1990,9 +2022,111 @@ class AppWithUnitSelection extends StatelessWidget {
           return _buildUnitSelectionDialog(context, appData);
         }
 
+        // Se a funcionalidade ainda não foi escolhida
+        if (appData._appFunctionality == null) {
+          return _buildFunctionalitySelectionDialog(context, appData);
+        }
+
         // SE JÁ TEM UNIDADE SELECIONADA, MOSTRA O APP NORMAL
         return const AppTabsController();
       },
+    );
+  }
+
+  // DIALOG DE SELEÇÃO DE FUNCIONALIDADE
+  Widget _buildFunctionalitySelectionDialog(
+    BuildContext context,
+    AppData appData,
+  ) {
+    return Scaffold(
+      backgroundColor: Colors.black54,
+      body: Center(
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.9,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.assignment_rounded,
+                size: 64,
+                color: const Color.fromARGB(255, 111, 136, 63),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'O que será avaliado?',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Color.fromARGB(255, 111, 136, 63),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Selecione o modo de funcionamento deste dispositivo:',
+                style: TextStyle(fontSize: 16, color: Colors.grey[700]),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+
+              // BOTÃO RESTAURANTE
+              ElevatedButton.icon(
+                onPressed: () => appData.selectFunctionality(1),
+                icon: const Icon(Icons.restaurant),
+                label: const Text(
+                  'Restaurante',
+                  style: TextStyle(fontSize: 18),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color.fromARGB(255, 111, 136, 63),
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 60),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // BOTÃO AMBIENTAÇÃO
+              ElevatedButton.icon(
+                onPressed: () => appData.selectFunctionality(2),
+                icon: const Icon(Icons.business_center),
+                label: const Text(
+                  'Ambientação da Empresa',
+                  style: TextStyle(fontSize: 18),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color.fromARGB(255, 111, 136, 63),
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 60),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              OutlinedButton(
+                onPressed: () => appData.goBackToPreviousSetupStep(),
+                child: const Text('Voltar para passo anterior'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -3353,7 +3487,7 @@ class _AppTabsControllerState extends State<AppTabsController> {
                   // TÍTULO DINÂMICO PARA RESTAURANTE E AMBIENTAÇÃO DA EMPRESA
                   Text(
                     // VERIFICA O MODO DO APP
-                    AppData.appFunctionality == 1
+                    appData.appFunctionality == 1
                         // CASO 1: RESTAURANTE (Usa os Turnos: Almoço, Jantar, etc.)
                         ? (_selectedIndex == 0
                               ? 'Avaliação - ${appData.getPeriodName(_currentShift)}'
@@ -3370,7 +3504,10 @@ class _AppTabsControllerState extends State<AppTabsController> {
                   ),
                   if (appData.selectedUnit != null)
                     Text(
-                      appData.selectedUnit!,
+                      // SE FOR RESTAURANTE (1), MOSTRA COM UNIFORME. SE FOR AMBIENTAÇÃO (2), MOSTRA SÓ A UNIDADE.
+                      appData.appFunctionality == 1
+                          ? appData.getFullUnitName()
+                          : appData.selectedUnit!,
                       style: const TextStyle(
                         fontSize: 12.0,
                         color: Colors.white70,
@@ -3533,8 +3670,10 @@ class _RatingScreenState extends State<RatingScreen> {
   };
 
   // Getter que seleciona baseado na constante do AppData
-  Map<String, List<String>> get _phrases =>
-      AppData.appFunctionality == 1 ? _restaurantPhrases : _orgPhrases;
+  Map<String, List<String>> _getPhrases() {
+    final appData = Provider.of<AppData>(context, listen: false);
+    return appData.appFunctionality == 1 ? _restaurantPhrases : _orgPhrases;
+  }
 
   @override
   void initState() {
@@ -3637,7 +3776,7 @@ class _RatingScreenState extends State<RatingScreen> {
       // 1. Identificar a categoria da frase clicada (Comida, Serviço ou Ambiente)
       String? clickedCategory;
 
-      _phrases.forEach((key, list) {
+      _getPhrases().forEach((key, list) {
         if (list.contains(phrase)) {
           // A chave é algo como 'Comida Positiva'. O split pega apenas 'Comida'.
           clickedCategory = key.split(' ')[0];
@@ -3654,7 +3793,7 @@ class _RatingScreenState extends State<RatingScreen> {
 
           // Verifica a categoria da frase já selecionada
           String? selectedCategory;
-          _phrases.forEach((key, list) {
+          _getPhrases().forEach((key, list) {
             if (list.contains(selectedPhrase)) {
               selectedCategory = key.split(' ')[0];
             }
@@ -3888,7 +4027,7 @@ class _RatingScreenState extends State<RatingScreen> {
                           _resetLocalTimer();
                         },
                         selectedPhrases: _pendingDetailedPhrases,
-                        phrasesMap: _phrases, // Passando o mapa
+                        phrasesMap: _getPhrases(), // Passando o mapa
                       ),
                       DetailedFeedbackTab(
                         sentiment: 'Negativa',
@@ -3897,7 +4036,7 @@ class _RatingScreenState extends State<RatingScreen> {
                           _resetLocalTimer();
                         },
                         selectedPhrases: _pendingDetailedPhrases,
-                        phrasesMap: _phrases, // Passando o mapa
+                        phrasesMap: _getPhrases(), // Passando o mapa
                       ),
                     ],
                   ),
@@ -3993,32 +4132,6 @@ class DetailedFeedbackTab extends StatelessWidget {
     required this.phrasesMap,
   });
 
-  // Frases de feedback
-  final Map<String, List<String>> _phrases = const {
-    'Comida Positiva': ['Bem Temperada', 'Comida quente', 'Boa Variedade'],
-    'Comida Negativa': ['Gosto Ruim', 'Comida Fria', 'Aparência Estranha'],
-    'Serviço Positiva': [
-      'Funcionários Atenciosos',
-      'Reposição Rápida',
-      'Organização Eficiente',
-    ],
-    'Serviço Negativa': [
-      'Atendimento Lento',
-      'Demora na Limpeza',
-      'Filas Grandes',
-    ],
-    'Ambiente Positiva': [
-      'Ambiente Limpo',
-      'Climatização Boa',
-      'Ambiente Silencioso',
-    ],
-    'Ambiente Negativa': [
-      'Ambiente Sujo',
-      'Climatização Ruim',
-      'Ambiente Barulhento',
-    ],
-  };
-
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -4034,7 +4147,7 @@ class DetailedFeedbackTab extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             // SELECIONA A LISTA BASEADO NA CONSTANTE
             children:
-                (AppData.appFunctionality == 1
+                (Provider.of<AppData>(context).appFunctionality == 1
                         ? ['Comida', 'Serviço', 'Ambiente']
                         : [
                             'Acolhimento e Recepção',
@@ -4063,7 +4176,7 @@ class DetailedFeedbackTab extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children:
-                (AppData.appFunctionality == 1
+                (Provider.of<AppData>(context).appFunctionality == 1
                         ? ['Comida', 'Serviço', 'Ambiente']
                         : [
                             'Acolhimento e Recepção',
@@ -5504,7 +5617,7 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                 children: [
                   Text(
                     // TÍTULO DINÂMICO PARA RESTAURANTE OU AMBIENTAÇÃO DE EMPRESA
-                    AppData.appFunctionality == 1
+                    Provider.of<AppData>(context).appFunctionality == 1
                         ? 'Qual sua experiência geral?' // Texto para Restaurante
                         : 'Qual a sua experiência geral com a ambientação da empresa?', // Texto para Empresa
                     style: TextStyle(
