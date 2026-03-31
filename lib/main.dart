@@ -6,8 +6,12 @@ import 'package:provider/provider.dart';
 
 import 'dart:async'; // Importação do Timer
 
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
+// import 'dart:io';
+// import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'utils/file_helper.dart'
+    as file_helper; // Importa o nosso novo sistema de arquivos
+
 import 'package:csv/csv.dart';
 
 import 'package:share_plus/share_plus.dart';
@@ -25,6 +29,8 @@ import 'package:permission_handler/permission_handler.dart'; // PARA PERMISSÕES
 import 'package:wakelock_plus/wakelock_plus.dart'; // PARA MANTER A TELA LIGADA
 
 import 'package:http/http.dart' as http; //
+
+import 'dart:io';
 
 // Definido uma ÚNICA vez no topo do arquivo
 typedef PhraseSelectedCallback = void Function(String phrase);
@@ -54,9 +60,25 @@ class AppData extends ChangeNotifier {
 
   // Nome do banco de dados principal (que será enviado ao PC)
   String get _dbFileName {
+    // 1. Pega o nome completo da unidade (Ex: "Matriz - Uniforme Branco" ou "Incubatório")
+    String nomeUnidade = getFullUnitName();
+
+    // 2. Formata o nome para ser seguro em arquivos de servidor (tira acentos, espaços e deixa minúsculo)
+    String nomeFormatado = nomeUnidade
+        .toLowerCase()
+        .replaceAll(' - ', '_')
+        .replaceAll(' ', '_')
+        .replaceAll(RegExp(r'[áàãâ]'), 'a')
+        .replaceAll(RegExp(r'[éèê]'), 'e')
+        .replaceAll(RegExp(r'[íìî]'), 'i')
+        .replaceAll(RegExp(r'[óòõô]'), 'o')
+        .replaceAll(RegExp(r'[úùû]'), 'u')
+        .replaceAll(RegExp(r'[ç]'), 'c');
+
+    // 3. Retorna o nome final com a unidade embutida
     return appFunctionality == 1
-        ? 'avaliacoes_restaurante.csv'
-        : 'avaliacoes_ambientacao.csv';
+        ? 'avaliacoes_restaurante_$nomeFormatado.csv'
+        : 'avaliacoes_ambientacao_$nomeFormatado.csv';
   }
 
   // Prefixo para os arquivos exportados/compartilhados manualmente
@@ -113,9 +135,9 @@ class AppData extends ChangeNotifier {
     'Bem Temperada': true,
     'Comida quente': true,
     'Boa Variedade': true,
-    'Gosto Ruim': false,
+    'Sem Sal': false,
     'Comida Fria': false,
-    'Aparência Estranha': false,
+    'Crua/ Mal cozida': false,
     'Funcionários Atenciosos': true,
     'Reposição Rápida': true,
     'Organização Eficiente': true,
@@ -287,6 +309,7 @@ class AppData extends ChangeNotifier {
 
   // Gerencia o pedido de permissão
   Future<void> _requestStoragePermission() async {
+    if (kIsWeb) return;
     // Verifica se é Android 11 ou superior (que exige MANAGE_EXTERNAL_STORAGE)
     if (await Permission.manageExternalStorage.isDenied) {
       // Se ainda não tem permissão, pede.
@@ -593,31 +616,33 @@ class AppData extends ChangeNotifier {
   // MÉTODOS CSV SAVE/LOAD (Permanecem inalterados na lógica de CSV)
   // ===============================================================
 
+  // Future<String> _getFilePath() async {
+  //   // Verifica se é Android
+  //   if (Platform.isAndroid) {
+  //     // 1. Aponta para a pasta pública de Downloads (que não apaga ao desinstalar)
+  //     final directory = Directory('/storage/emulated/0/Download');
+
+  //     // 2. Garante que a pasta existe
+  //     if (!await directory.exists()) {
+  //       await directory.create(recursive: true);
+  //     }
+
+  //     // Isso garante que ao reinstalar o app, ele encontre o arquivo antigo.
+  //     // USA O NOME DINÂMICO
+  //     return '${directory.path}/$_dbFileName';
+  //   }
+
+  //   // Fallback para iOS ou outros (mantém o padrão)
+  //   final directory = await getApplicationDocumentsDirectory();
+  //   return '${directory.path}/$_dbFileName';
+  // }
+
   Future<String> _getFilePath() async {
-    // Verifica se é Android
-    if (Platform.isAndroid) {
-      // 1. Aponta para a pasta pública de Downloads (que não apaga ao desinstalar)
-      final directory = Directory('/storage/emulated/0/Download');
-
-      // 2. Garante que a pasta existe
-      if (!await directory.exists()) {
-        await directory.create(recursive: true);
-      }
-
-      // Isso garante que ao reinstalar o app, ele encontre o arquivo antigo.
-      // USA O NOME DINÂMICO
-      return '${directory.path}/$_dbFileName';
-    }
-
-    // Fallback para iOS ou outros (mantém o padrão)
-    final directory = await getApplicationDocumentsDirectory();
-    return '${directory.path}/$_dbFileName';
+    // Caminho padrão da pasta pública de Downloads no Android
+    return '/storage/emulated/0/Download/feedbacks_costafoods_$appFunctionality.csv';
   }
 
   Future<void> saveDataToCSV() async {
-    final filePath = await _getFilePath();
-    final file = File(filePath);
-
     List<List<dynamic>> csvData = [];
 
     // Cabeçalho
@@ -632,25 +657,21 @@ class AppData extends ChangeNotifier {
       'unidade',
     ]);
 
-    // Linhas de dados (Itera sobre a lista de registros)
+    // Linhas de dados
     for (var record in allEvaluationRecords) {
       final int stars = record['estrelas'] as int;
-      // CALCULA SATISFAÇÃO
       final String satisfacao = _getSatisfactionStatus(stars);
-      // Converte número para nome
-      // LÓGICA CONDICIONAL DO TURNO PARA RESTAURANTE E AMBIENTAÇÃO DA EMPRESA
+
       String nomeTurno;
       if (appFunctionality == 1) {
-        // Modo Restaurante: Calcula o nome da refeição (Almoço, Jantar...)
         nomeTurno = getPeriodName(record['turno'] as int);
       } else {
-        // Modo Empresa: Não usa turnos de refeição, define um padrão
         nomeTurno = 'Ambientação';
       }
 
       csvData.add([
         record['timestamp'],
-        nomeTurno, // Vai salvar "Ambientação" se for empresa
+        nomeTurno,
         record['estrelas'],
         satisfacao,
         record['positivos'],
@@ -663,37 +684,43 @@ class AppData extends ChangeNotifier {
     final csvString = const ListToCsvConverter(
       fieldDelimiter: ';',
     ).convert(csvData);
-    await file.writeAsString(csvString);
-    // SALVA COM CODIFICAÇÃO UTF-8 E BOM
-    final bom = utf8.encode('\uFEFF'); // Byte Order Mark para UTF-8
-    final encodedData = utf8.encode(csvString);
-    final fullData = [...bom, ...encodedData];
 
-    await file.writeAsBytes(fullData, flush: true);
+    // =========================================================
+    // 1. SALVA NO COFRE INTERNO INVISÍVEL (SharedPreferences)
+    // =========================================================
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('backup_database_$appFunctionality', csvString);
 
-    // NOVA LINHA AQUI: Assim que terminar de salvar localmente, envia uma cópia para o PC
+    // =========================================================
+    // 2. SALVA O ARQUIVO FÍSICO NA PASTA DOWNLOADS (Android)
+    // =========================================================
+    try {
+      if (Platform.isAndroid) {
+        final filePath = await _getFilePath();
+        final file = File(filePath);
+
+        // Adiciona o BOM (\uFEFF) para o Excel ler os acentos (UTF-8) perfeitamente
+        const String bom = '\uFEFF';
+        await file.writeAsString(bom + csvString, encoding: utf8);
+        print("Arquivo salvo com sucesso em: $filePath");
+      }
+    } catch (e) {
+      print("Erro ao tentar salvar o arquivo físico: $e");
+    }
+
+    // =========================================================
+    // 3. ENVIA PARA O SERVIDOR PYTHON
+    // =========================================================
     _sendCSVToComputer();
   }
 
   Future<void> loadDataFromCSV() async {
-    final filePath = await _getFilePath();
-    final file = File(filePath);
+    final prefs = await SharedPreferences.getInstance();
 
-    if (!(await file.exists())) return;
+    // Tenta carregar os dados salvos anteriormente
+    final csvString = prefs.getString('backup_database_$appFunctionality');
 
-    // LÊ COM CODIFICAÇÃO UTF-8
-    final bytes = await file.readAsBytes();
-    String csvString;
-
-    // Remove BOM se existir e decodifica como UTF-8
-    if (bytes.length >= 3 &&
-        bytes[0] == 0xEF &&
-        bytes[1] == 0xBB &&
-        bytes[2] == 0xBF) {
-      csvString = utf8.decode(bytes.sublist(3));
-    } else {
-      csvString = utf8.decode(bytes);
-    }
+    if (csvString == null || csvString.isEmpty) return;
 
     final csvData = const CsvToListConverter(
       fieldDelimiter: ';',
@@ -706,15 +733,12 @@ class AppData extends ChangeNotifier {
       final row = csvData[i];
 
       if (row.length >= 7) {
-        // LÓGICA ROBUSTA PARA O TURNO DO RESTAURANTE E AMBIENTAÇÃO DA EMPRESA
         int turnoId = 1;
         final turnoRaw = row[1];
 
         if (turnoRaw is int) {
           turnoId = turnoRaw;
         } else {
-          // Se for modo Empresa e estiver escrito "Ambientaçâo", definimos ID 1 (padrão)
-          // Se for modo Restaurante, ele tenta achar "Almoço", "Jantar", etc.
           if (appFunctionality == 2 && turnoRaw.toString() == 'Ambientação') {
             turnoId = 1;
           } else {
@@ -724,7 +748,7 @@ class AppData extends ChangeNotifier {
 
         Map<String, dynamic> record = {
           'timestamp': row[0].toString(),
-          'turno': turnoId, // Salva na memória sempre como ID (número)
+          'turno': turnoId,
           'estrelas': row[2] as int,
           'positivos': row[4].toString(),
           'negativos': row[5].toString(),
@@ -1011,29 +1035,34 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  // MÉTODO ALTERNATivo - Salvar Diretamente na Pasta Downloads
+  // MÉTODO ALTERNATIVO - Salvar Diretamente (Compatível com Web e Mobile)
   Future<void> exportToDownloads(BuildContext context) async {
     try {
+      // 1. Gera o conteúdo em CSV
       final csvData = await _generateCSVContent();
 
-      // Tentar encontrar a pasta Downloads
-      String downloadsPath = await _getDownloadsPath();
+      // 2. Gera o nome do arquivo
+      final timestamp = DateTime.now().toString().replaceAll(
+        RegExp(r'[^0-9]'),
+        '_',
+      );
+      final fileName = 'restaurante_costa_foods_$timestamp.csv';
 
-      final file = File('$downloadsPath/restaurante_costa_foods.csv');
-      await file.writeAsString(csvData, flush: true);
+      // 3. Usa o helper multiplataforma (Sem dart:io ou path_provider!)
+      await file_helper.saveFile(fileName, csvData);
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Arquivo salvo em: $downloadsPath'),
+          const SnackBar(
+            content: Text('Arquivo salvo com sucesso!'),
             backgroundColor: Colors.green,
-            duration: const Duration(seconds: 4),
+            duration: Duration(seconds: 4),
           ),
         );
       }
     } catch (e) {
-      // Fallback: usar o método com escolha de diretório
       if (context.mounted) {
+        // Fallback: usar o método com escolha de diretório
         await exportCSV(context);
       }
     }
@@ -1088,6 +1117,7 @@ class AppData extends ChangeNotifier {
   }
 
   // GERAR CONTEÚDO CSV FILTRADO POR DATA
+  // GERAR CONTEÚDO CSV FILTRADO POR DATA
   Future<String> _generateFilteredCSVContent() async {
     final List<List<dynamic>> csvData = [];
 
@@ -1118,7 +1148,6 @@ class AppData extends ChangeNotifier {
 
       // APLICA FILTRO CORRETAMENTE
       if (_selectedStartDate != null && _selectedEndDate != null) {
-        // Converte as datas selecionadas para o início do dia
         final startDay = DateTime(
           _selectedStartDate!.year,
           _selectedStartDate!.month,
@@ -1130,18 +1159,12 @@ class AppData extends ChangeNotifier {
           _selectedEndDate!.day,
         );
 
-        // VERIFICAÇÃO CORRETA: recordDay deve ser >= startDay E <= endDay
         final isAfterOrEqualStart =
             recordDay.isAfter(startDay) || _isSameDay(recordDay, startDay);
         final isBeforeOrEqualEnd =
             recordDay.isBefore(endDay) || _isSameDay(recordDay, endDay);
 
         final shouldInclude = isAfterOrEqualStart && isBeforeOrEqualEnd;
-
-        // Debug para cada registro
-        print(
-          '   📅 Record: $recordDay | Start: $startDay | End: $endDay | Include: $shouldInclude',
-        );
 
         if (!shouldInclude) {
           continue; // Pula registros fora do intervalo
@@ -1150,9 +1173,15 @@ class AppData extends ChangeNotifier {
 
       final int stars = record['estrelas'] as int;
       final category = getCategoryName(stars);
-      final turno = getPeriodName(
-        record['turno'] as int,
-      ); // Usa o nome da refeição
+
+      // LÓGICA CONDICIONAL ADICIONADA AQUI TAMBÉM
+      String turno;
+      if (appFunctionality == 1) {
+        turno = getPeriodName(record['turno'] as int);
+      } else {
+        turno = 'Ambientação';
+      }
+
       final String satisfactionStatus =
           record['satisfacao']?.toString() ?? _getSatisfactionStatus(stars);
 
@@ -1160,7 +1189,7 @@ class AppData extends ChangeNotifier {
         getFullUnitName(),
         record['timestamp'],
         turno,
-        '${record['estrelas']} estrelas ($category)',
+        '${record['estrelas']}',
         category,
         satisfactionStatus,
         record['positivos'],
@@ -1189,26 +1218,23 @@ class AppData extends ChangeNotifier {
   String? _lastSavedFilePath; // Guarda o último caminho salvo
 
   // SALVAR NO DISPOSITIVO
+  // SALVAR NO DISPOSITIVO (Compatível com Web e Mobile)
   Future<void> _saveToDevice(BuildContext context, String csvData) async {
     try {
-      // Usar diretório de documentos (funciona sem permissões especiais)
-      final directory = await getApplicationDocumentsDirectory();
-      final fileName = 'restaurante_costa_foods.csv';
-      final file = File('${directory.path}/$fileName');
+      final fileName = 'restaurante_costa_foods_${_getFormattedDate()}.csv';
 
-      await file.writeAsString(csvData, flush: true);
+      // CHAMA O HELPER MULTIPLATAFORMA (Sem File ou getApplicationDocumentsDirectory)
+      await file_helper.saveFile(fileName, csvData);
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Arquivo salvo com sucesso!'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
+            content: Text('Arquivo salvo com sucesso: $fileName'),
+            backgroundColor: Colors.blue,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
-
-      print(' Arquivo salvo em: ${file.path}'); // Para debug
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1222,263 +1248,240 @@ class AppData extends ChangeNotifier {
   }
 
   // DIALOG DE SUCESSO COM BOTÃO "ABRIR PASTA"
-  void _showSaveSuccessDialog(
-    BuildContext context,
-    String filePath,
-    String fileName,
-  ) {
-    final directoryPath = File(filePath).parent.path;
+  // void _showSaveSuccessDialog(
+  //   BuildContext context,
+  //   String filePath,
+  //   String fileName,
+  // ) {
+  //   final directoryPath = File(filePath).parent.path;
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Arquivo Salvo!'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Arquivo: $fileName'),
-            const SizedBox(height: 8),
-            Text(
-              'Pasta: ${_getShortPath(directoryPath)}',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'O arquivo CSV foi salvo com sucesso. Deseja abrir a pasta onde ele está?',
-              style: TextStyle(fontSize: 14),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Fechar'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _openFileManager(directoryPath);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color.fromARGB(255, 111, 136, 63),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Abrir Pasta'),
-          ),
-        ],
-      ),
-    );
-  }
+  //   showDialog(
+  //     context: context,
+  //     builder: (context) => AlertDialog(
+  //       title: const Text('Arquivo Salvo!'),
+  //       content: Column(
+  //         mainAxisSize: MainAxisSize.min,
+  //         crossAxisAlignment: CrossAxisAlignment.start,
+  //         children: [
+  //           Text('Arquivo: $fileName'),
+  //           const SizedBox(height: 8),
+  //           Text(
+  //             'Pasta: ${_getShortPath(directoryPath)}',
+  //             style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+  //           ),
+  //           const SizedBox(height: 16),
+  //           const Text(
+  //             'O arquivo CSV foi salvo com sucesso. Deseja abrir a pasta onde ele está?',
+  //             style: TextStyle(fontSize: 14),
+  //           ),
+  //         ],
+  //       ),
+  //       actions: [
+  //         TextButton(
+  //           onPressed: () => Navigator.pop(context),
+  //           child: const Text('Fechar'),
+  //         ),
+  //         ElevatedButton(
+  //           onPressed: () {
+  //             Navigator.pop(context);
+  //             _openFileManager(directoryPath);
+  //           },
+  //           style: ElevatedButton.styleFrom(
+  //             backgroundColor: const Color.fromARGB(255, 111, 136, 63),
+  //             foregroundColor: Colors.white,
+  //           ),
+  //           child: const Text('Abrir Pasta'),
+  //         ),
+  //       ],
+  //     ),
+  //   );
+  // }
 
   // ABRIR GERENCIADOR DE ARQUIVOS
-  Future<void> _openFileManager(String path) async {
-    try {
-      if (Platform.isAndroid) {
-        // Para Android, tenta abrir o gerenciador de arquivos
-        final uri =
-            'content://com.android.externalstorage.documents/document/primary:${_getAndroidStoragePath(path)}';
+  // Future<void> _openFileManager(String path) async {
+  //   try {
+  //     if (Platform.isAndroid) {
+  //       // Para Android, tenta abrir o gerenciador de arquivos
+  //       final uri =
+  //           'content://com.android.externalstorage.documents/document/primary:${_getAndroidStoragePath(path)}';
 
-        if (await canLaunchUrl(Uri.parse(uri))) {
-          await launchUrl(Uri.parse(uri));
-        } else {
-          // Fallback: tentar abrir com intent genérico
-          await _openFileManagerFallback(path);
-        }
-      } else {
-        await _openFileManagerFallback(path);
-      }
-    } catch (e) {
-      print('Erro ao abrir gerenciador: $e');
-      await _openFileManagerFallback(path);
-    }
-  }
+  //       if (await canLaunchUrl(Uri.parse(uri))) {
+  //         await launchUrl(Uri.parse(uri));
+  //       } else {
+  //         // Fallback: tentar abrir com intent genérico
+  //         await _openFileManagerFallback(path);
+  //       }
+  //     } else {
+  //       await _openFileManagerFallback(path);
+  //     }
+  //   } catch (e) {
+  //     print('Erro ao abrir gerenciador: $e');
+  //     await _openFileManagerFallback(path);
+  //   }
+  // }
 
   // FALLBACK PARA ABRIR GERENCIADOR
-  Future<void> _openFileManagerFallback(String path) async {
-    try {
-      // Tenta abrir o diretório usando file://
-      final uri = 'file://$path';
+  // Future<void> _openFileManagerFallback(String path) async {
+  //   try {
+  //     // Tenta abrir o diretório usando file://
+  //     final uri = 'file://$path';
 
-      if (await canLaunchUrl(Uri.parse(uri))) {
-        await launchUrl(Uri.parse(uri));
-      } else {
-        // Mostra o caminho completo para o usuário
-        _showPathDialog(path);
-      }
-    } catch (e) {
-      _showPathDialog(path);
-    }
-  }
+  //     if (await canLaunchUrl(Uri.parse(uri))) {
+  //       await launchUrl(Uri.parse(uri));
+  //     } else {
+  //       // Mostra o caminho completo para o usuário
+  //       _showPathDialog(path);
+  //     }
+  //   } catch (e) {
+  //     _showPathDialog(path);
+  //   }
+  // }
 
   // MOSTRAR CAMINHO COMPLETO
-  void _showPathDialog(String path) {
-    // Pode ser implementado se quiser mostrar um dialog com o caminho
-    print('Caminho do arquivo: $path');
-  }
+  // void _showPathDialog(String path) {
+  //   // Pode ser implementado se quiser mostrar um dialog com o caminho
+  //   print('Caminho do arquivo: $path');
+  // }
 
   // CONVERTER CAMINHO PARA FORMATO ANDROID
-  String _getAndroidStoragePath(String path) {
-    // Converte caminho como /storage/emulated/0/Android/data/...
-    // para formato que o gerenciador entenda
-    if (path.contains('Android/data')) {
-      final parts = path.split('Android/data/');
-      if (parts.length > 1) {
-        return 'Android%2Fdata%2F${parts[1]}';
-      }
-    }
-    return Uri.encodeComponent(path);
-  }
+  // String _getAndroidStoragePath(String path) {
+  //   // Converte caminho como /storage/emulated/0/Android/data/...
+  //   // para formato que o gerenciador entenda
+  //   if (path.contains('Android/data')) {
+  //     final parts = path.split('Android/data/');
+  //     if (parts.length > 1) {
+  //       return 'Android%2Fdata%2F${parts[1]}';
+  //     }
+  //   }
+  //   return Uri.encodeComponent(path);
+  // }
 
   // ENCURTAR CAMINHO PARA EXIBIÇÃO
-  String _getShortPath(String path) {
-    if (path.length > 50) {
-      return '...${path.substring(path.length - 47)}';
-    }
-    return path;
-  }
+  // String _getShortPath(String path) {
+  //   if (path.length > 50) {
+  //     return '...${path.substring(path.length - 47)}';
+  //   }
+  //   return path;
+  // }
 
   // OBTER PASTA DOWNLOADS PÚBLICA (Android 10+)
-  Future<String> _getPublicDownloadsPath() async {
-    try {
-      if (Platform.isAndroid) {
-        // Método para Android - tenta acessar a pasta Downloads pública
-        final directory = await getExternalStorageDirectory();
-        if (directory != null) {
-          // Navega para a pasta Downloads pública
-          // Em muitos dispositivos fica em /storage/emulated/0/Download
-          final downloadsPath =
-              '${directory.parent.parent?.path ?? directory.path}/Download';
-          final downloadsDir = Directory(downloadsPath);
+  // Future<String> _getPublicDownloadsPath() async {
+  //   try {
+  //     if (Platform.isAndroid) {
+  //       // Método para Android - tenta acessar a pasta Downloads pública
+  //       final directory = await getExternalStorageDirectory();
+  //       if (directory != null) {
+  //         // Navega para a pasta Downloads pública
+  //         // Em muitos dispositivos fica em /storage/emulated/0/Download
+  //         final downloadsPath =
+  //             '${directory.parent.parent?.path ?? directory.path}/Download';
+  //         final downloadsDir = Directory(downloadsPath);
 
-          // Se não existir, tenta criar
-          if (!await downloadsDir.exists()) {
-            await downloadsDir.create(recursive: true);
-          }
+  //         // Se não existir, tenta criar
+  //         if (!await downloadsDir.exists()) {
+  //           await downloadsDir.create(recursive: true);
+  //         }
 
-          return downloadsPath;
-        }
-      }
+  //         return downloadsPath;
+  //       }
+  //     }
 
-      // Fallback: usar Environment.DIRECTORY_DOWNLOADS
-      final directory = await getDownloadsDirectory();
-      if (directory != null) {
-        return directory.path;
-      }
+  //     // Fallback: usar Environment.DIRECTORY_DOWNLOADS
+  //     final directory = await getDownloadsDirectory();
+  //     if (directory != null) {
+  //       return directory.path;
+  //     }
 
-      throw Exception('Não foi possível acessar a pasta Downloads');
-    } catch (e) {
-      // Fallback final: pasta de documentos
-      final documentsDir = await getApplicationDocumentsDirectory();
-      return documentsDir.path;
-    }
-  }
+  //     throw Exception('Não foi possível acessar a pasta Downloads');
+  //   } catch (e) {
+  //     // Fallback final: pasta de documentos
+  //     final documentsDir = await getApplicationDocumentsDirectory();
+  //     return documentsDir.path;
+  //   }
+  // }
 
-  Future<void> openLastSavedFile(BuildContext context) async {
-    if (_lastSavedPath == null) {
-      _showError(context, 'Nenhum arquivo salvo anteriormente');
-      return;
-    }
+  // Future<void> openLastSavedFile(BuildContext context) async {
+  //   if (_lastSavedPath == null) {
+  //     _showError(context, 'Nenhum arquivo salvo anteriormente');
+  //     return;
+  //   }
 
-    try {
-      final file = File(_lastSavedPath!);
-      if (await file.exists()) {
-        await _openFile(context, _lastSavedPath!);
-      } else {
-        _showError(context, 'Arquivo anterior não encontrado');
-        _lastSavedPath = null;
-      }
-    } catch (e) {
-      _showError(context, 'Erro ao abrir arquivo anterior');
-    }
-  }
+  //   try {
+  //     final file = File(_lastSavedPath!);
+  //     if (await file.exists()) {
+  //       await _openFile(context, _lastSavedPath!);
+  //     } else {
+  //       _showError(context, 'Arquivo anterior não encontrado');
+  //       _lastSavedPath = null;
+  //     }
+  //   } catch (e) {
+  //     _showError(context, 'Erro ao abrir arquivo anterior');
+  //   }
+  // }
 
   // SALVAR NO DISPOSITIVO
   Future<void> _saveToDownloads(BuildContext context, String csvData) async {
     try {
-      // Tentar acessar o storage externo (Downloads)
-      final directory = await getExternalStorageDirectory();
-
-      if (directory == null) {
-        throw Exception('Não foi possível acessar o armazenamento');
-      }
-
-      // Criar pasta Downloads se não existir
-      final downloadsDir = Directory('${directory.path}/Download');
-      if (!await downloadsDir.exists()) {
-        await downloadsDir.create(recursive: true);
-      }
-
-      // Nome do arquivo com timestamp
+      // 1. Gera o nome do arquivo com timestamp (mantendo sua lógica original)
       final timestamp = DateTime.now().toString().replaceAll(
         RegExp(r'[^0-9]'),
         '_',
       );
       final fileName = '${_exportPrefix}_$timestamp.csv';
-      final file = File('${downloadsDir.path}/$fileName');
 
-      // SALVA COM UTF-8
-      final bom = utf8.encode('\uFEFF');
-      final encodedData = utf8.encode(csvData);
-      final fullData = [...bom, ...encodedData];
-
-      await file.writeAsBytes(fullData, flush: true);
+      // 2. CHAMA O HELPER MULTIPLATAFORMA
+      // No Android: Vai salvar silenciosamente na pasta Downloads.
+      // Na Web: Vai abrir a janela padrão do navegador para o usuário baixar.
+      await file_helper.saveFile(fileName, csvData);
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Arquivo salvo na pasta Downloads!'),
+            content: const Text('Arquivo exportado com sucesso!'),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 3),
-            action: SnackBarAction(
-              label: 'Abrir',
-              onPressed: () =>
-                  _shareFile(context, csvData), // Abrir via compartilhamento
-            ),
+            // Nota: O botão de "Abrir" foi removido pois a forma de abrir
+            // varia muito entre Web e Mobile.
           ),
         );
       }
 
-      print('✔️ Arquivo salvo em: ${file.path}');
+      print('✔️ Arquivo enviado para exportação: $fileName');
     } catch (e) {
-      // Fallback: salvar em documentos e compartilhar
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Não foi possível salvar nos Downloads. Compartilhando arquivo...',
-            ),
-            backgroundColor: Colors.orange,
+            content: Text('Erro ao salvar o arquivo: $e'),
+            backgroundColor: Colors.red,
           ),
         );
-        await _shareFile(context, csvData);
       }
     }
   }
 
   // SALVAR NA PASTA DE DOCUMENTOS (fallback)
-  Future<void> _saveToDocuments(BuildContext context, String csvData) async {
-    try {
-      final documentsDir = await getApplicationDocumentsDirectory();
-      final fileName = '${_exportPrefix}_${_getFormattedDate()}.csv';
-      final file = File('${documentsDir.path}/$fileName');
+  // Future<void> _saveToDocuments(BuildContext context, String csvData) async {
+  //   try {
+  //     final documentsDir = await getApplicationDocumentsDirectory();
+  //     final fileName = '${_exportPrefix}_${_getFormattedDate()}.csv';
+  //     final file = File('${documentsDir.path}/$fileName');
 
-      await file.writeAsString(csvData, flush: true);
+  //     await file.writeAsString(csvData, flush: true);
 
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('📁 Salvo em Documentos: $fileName'),
-            backgroundColor: Colors.blue,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-      }
-    } catch (e) {
-      print('Erro ao salvar em Documentos: $e');
-      rethrow;
-    }
-  }
+  //     if (context.mounted) {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         SnackBar(
+  //           content: Text('📁 Salvo em Documentos: $fileName'),
+  //           backgroundColor: Colors.blue,
+  //           duration: const Duration(seconds: 5),
+  //         ),
+  //       );
+  //     }
+  //   } catch (e) {
+  //     print('Erro ao salvar em Documentos: $e');
+  //     rethrow;
+  //   }
+  // }
 
   // DATA FORMATADA PARA O NOME DO ARQUIVO
   String _getFormattedDate() {
@@ -1487,42 +1490,56 @@ class AppData extends ChangeNotifier {
   }
 
   // ABRIR ARQUIVO - MÉTODO FUNCIONAL
-  Future<void> _openFile(BuildContext context, String filePath) async {
-    try {
-      final file = File(filePath);
-      if (await file.exists()) {
-        // Compartilhar o arquivo para abrir com apps disponíveis
-        await Share.shareXFiles([XFile(filePath)]);
-      } else {
-        _showError(context, 'Arquivo não encontrado');
-      }
-    } catch (e) {
-      _showError(context, 'Não foi possível abrir o arquivo');
-    }
-  }
+  // Future<void> _openFile(BuildContext context, String filePath) async {
+  //   try {
+  //     final file = File(filePath);
+  //     if (await file.exists()) {
+  //       // Compartilhar o arquivo para abrir com apps disponíveis
+  //       await Share.shareXFiles([XFile(filePath)]);
+  //     } else {
+  //       _showError(context, 'Arquivo não encontrado');
+  //     }
+  //   } catch (e) {
+  //     _showError(context, 'Não foi possível abrir o arquivo');
+  //   }
+  // }
 
   // COMPARTILHAR ARQUIVO COM MENSAGEM PERSONALIZADA
+  // COMPARTILHAR ARQUIVO (Compatível com Web e Mobile)
   Future<void> _shareFile(BuildContext context, String csvData) async {
     try {
-      final directory = await getTemporaryDirectory();
-      final file = File('${directory.path}/$_exportPrefix.csv');
-      // SALVA COM UTF-8 E BOM
+      // 1. Prepara os dados na memória (UTF-8 com BOM)
       final bom = utf8.encode('\uFEFF');
       final encodedData = utf8.encode(csvData);
       final fullData = [...bom, ...encodedData];
 
-      await file.writeAsBytes(fullData, flush: true);
+      // Converte para o formato que o SharePlus exige em memória
+      final bytes = Uint8List.fromList(fullData);
 
-      // MENSAGEM PERSONALIZADA PARA COMPARTILHAMENTO
+      // 2. Gera o nome do arquivo
+      final timestamp = DateTime.now().toString().replaceAll(
+        RegExp(r'[^0-9]'),
+        '_',
+      );
+      final fileName = '${_exportPrefix}_$timestamp.csv';
+
       final String shareMessage = _getShareMessage();
 
+      // 3. Cria o arquivo virtual (XFile.fromData funciona na Web!)
+      final xFile = XFile.fromData(bytes, name: fileName, mimeType: 'text/csv');
+
+      // Se a unidade for Matriz, adiciona o tipo de uniforme escolhido
+      if (_selectedUnit == 'Matriz') {
+        String uniforme = _selectedUniformType ?? 'Não definido';
+        _selectedUnit = 'Matriz - $uniforme';
+      }
+
+      // 4. Compartilha
       await Share.shareXFiles(
-        [
-          XFile(file.path, mimeType: 'text/csv; charset=utf-8'),
-        ], // ESPECIFICA CHARSET
-        text: shareMessage, // MENSAGEM PERSONALIZADA
+        [xFile],
+        text: shareMessage,
         subject:
-            '(${_selectedUnit ?? 'Não definida'}) Relatório de Avaliações - ${appFunctionality == 1 ? 'Restaurante' : 'Ambientação'}', // ASSUNTO
+            '(${_selectedUnit ?? 'Não definida'}) Relatório de Avaliações - ${appFunctionality == 1 ? 'Restaurante' : 'Ambientação'}',
       );
     } catch (e) {
       if (context.mounted) {
@@ -1549,84 +1566,84 @@ Arquivo contém dados completos das avaliações dos clientes.
   }
 
   // OBTER PASTA DOWNLOADS
-  Future<String> _getDownloadsPath() async {
-    try {
-      if (Platform.isAndroid) {
-        final directory = await getExternalStorageDirectory();
-        if (directory != null) {
-          // Tenta encontrar a pasta Downloads
-          final downloadsDir = Directory('${directory.path}/Download');
-          if (await downloadsDir.exists()) {
-            return downloadsDir.path;
-          }
-          // Ou cria se não existir
-          await downloadsDir.create(recursive: true);
-          return downloadsDir.path;
-        }
-      }
+  // Future<String> _getDownloadsPath() async {
+  //   try {
+  //     if (Platform.isAndroid) {
+  //       final directory = await getExternalStorageDirectory();
+  //       if (directory != null) {
+  //         // Tenta encontrar a pasta Downloads
+  //         final downloadsDir = Directory('${directory.path}/Download');
+  //         if (await downloadsDir.exists()) {
+  //           return downloadsDir.path;
+  //         }
+  //         // Ou cria se não existir
+  //         await downloadsDir.create(recursive: true);
+  //         return downloadsDir.path;
+  //       }
+  //     }
 
-      // Fallback: diretório de documentos
-      final documentsDir = await getApplicationDocumentsDirectory();
-      return documentsDir.path;
-    } catch (e) {
-      // Fallback final: diretório temporário
-      final tempDir = await getTemporaryDirectory();
-      return tempDir.path;
-    }
-  }
+  //     // Fallback: diretório de documentos
+  //     final documentsDir = await getApplicationDocumentsDirectory();
+  //     return documentsDir.path;
+  //   } catch (e) {
+  //     // Fallback final: diretório temporário
+  //     final tempDir = await getTemporaryDirectory();
+  //     return tempDir.path;
+  //   }
+  // }
 
   // ABRIR PASTA - MÉTODO FUNCIONAL
-  Future<void> _openFolder(BuildContext context, String filePath) async {
-    try {
-      final directory = File(filePath).parent;
+  // Future<void> _openFolder(BuildContext context, String filePath) async {
+  //   try {
+  //     final directory = File(filePath).parent;
 
-      // Mostrar informações da pasta
-      if (context.mounted) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Local do Arquivo'),
-            content: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('Arquivo salvo em:'),
-                  const SizedBox(height: 8),
-                  Text(
-                    directory.path,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text('Para acessar:', style: TextStyle(fontSize: 12)),
-                  const Text(
-                    '• Abra o app "Arquivos" do seu dispositivo',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  const Text(
-                    '• Navegue até a pasta mostrada acima',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('OK'),
-              ),
-              TextButton(
-                onPressed: () => _openFile(context, filePath),
-                child: const Text('Abrir Arquivo'),
-              ),
-            ],
-          ),
-        );
-      }
-    } catch (e) {
-      _showError(context, 'Não foi possível abrir a pasta');
-    }
-  }
+  //     // Mostrar informações da pasta
+  //     if (context.mounted) {
+  //       showDialog(
+  //         context: context,
+  //         builder: (context) => AlertDialog(
+  //           title: const Text('Local do Arquivo'),
+  //           content: SingleChildScrollView(
+  //             child: Column(
+  //               crossAxisAlignment: CrossAxisAlignment.start,
+  //               mainAxisSize: MainAxisSize.min,
+  //               children: [
+  //                 const Text('Arquivo salvo em:'),
+  //                 const SizedBox(height: 8),
+  //                 Text(
+  //                   directory.path,
+  //                   style: const TextStyle(fontWeight: FontWeight.bold),
+  //                 ),
+  //                 const SizedBox(height: 12),
+  //                 const Text('Para acessar:', style: TextStyle(fontSize: 12)),
+  //                 const Text(
+  //                   '• Abra o app "Arquivos" do seu dispositivo',
+  //                   style: TextStyle(fontSize: 12),
+  //                 ),
+  //                 const Text(
+  //                   '• Navegue até a pasta mostrada acima',
+  //                   style: TextStyle(fontSize: 12),
+  //                 ),
+  //               ],
+  //             ),
+  //           ),
+  //           actions: [
+  //             TextButton(
+  //               onPressed: () => Navigator.pop(context),
+  //               child: const Text('OK'),
+  //             ),
+  //             TextButton(
+  //               onPressed: () => _openFile(context, filePath),
+  //               child: const Text('Abrir Arquivo'),
+  //             ),
+  //           ],
+  //         ),
+  //       );
+  //     }
+  //   } catch (e) {
+  //     _showError(context, 'Não foi possível abrir a pasta');
+  //   }
+  // }
 
   // GERAR CONTEÚDO CSV (mantém igual)
   Future<String> _generateCSVContent() async {
@@ -1648,11 +1665,13 @@ Arquivo contém dados completos das avaliações dos clientes.
       final int stars = record['estrelas'] as int;
       final category = getCategoryName(stars);
 
-      // LÓGICA CONDICIONAL PARA RESTAURANTE E AMBIENTAÇÃO DA EMPRESA
+      // LÓGICA CONDICIONAL CORRIGIDA
       String turno;
-      if (appFunctionality == 2) {
+      if (appFunctionality == 1) {
+        // 1 = Restaurante
         turno = getPeriodName(record['turno'] as int);
       } else {
+        // 2 = Ambientação da Empresa
         turno = 'Ambientação';
       }
 
@@ -1663,7 +1682,7 @@ Arquivo contém dados completos das avaliações dos clientes.
         getFullUnitName(), // USA O NOME COMPLETO DA UNIDADE
         record['timestamp'],
         turno,
-        '${record['estrelas']} estrelas ($category)',
+        '${record['estrelas']}',
         category,
         satisfactionStatus,
         record['positivos'],
@@ -1677,35 +1696,29 @@ Arquivo contém dados completos das avaliações dos clientes.
 
   Future<void> _sendCSVToComputer() async {
     try {
-      // 1. Pega o caminho exato do arquivo CSV que acabou de ser salvo no tablet
-      final filePath = await _getFilePath();
-      final file = File(filePath);
+      // 1. Gera o conteúdo do CSV em memória
+      final csvString = await _generateCSVContent();
+      final bom = utf8.encode('\uFEFF');
+      final encodedData = utf8.encode(csvString);
+      final fileBytes = [...bom, ...encodedData];
 
-      if (!await file.exists()) {
-        print('Arquivo CSV ainda não existe localmente.');
-        return;
-      }
-
-      // ATENÇÃO: Coloque o IP do computador que está rodando o servidor Python
-      // Note que a rota agora é /upload_csv
       final url = Uri.parse('http://10.1.32.181:5000/upload_csv');
-
-      // 2. Cria uma requisição do tipo "Multipart" (Padrão web para upload de arquivos)
       var request = http.MultipartRequest('POST', url);
 
-      // 3. Anexa o arquivo CSV na requisição
-      request.files.add(await http.MultipartFile.fromPath('file', file.path));
+      // 2. Anexa os bytes diretamente (Funciona no Android e na Web!)
+      request.files.add(
+        http.MultipartFile.fromBytes('file', fileBytes, filename: _dbFileName),
+      );
 
-      // 4. Dispara o envio
       var response = await request.send();
 
       if (response.statusCode == 200) {
-        print('✅ Arquivo CSV inteiro enviado para o PC com sucesso!');
+        print('✅ CSV enviado para o PC com sucesso!');
       } else {
-        print('❌ Falha ao enviar CSV. Código do erro: ${response.statusCode}');
+        print('❌ Falha ao enviar CSV. Código: ${response.statusCode}');
       }
     } catch (e) {
-      print('Erro de conexão ao enviar CSV (PC desligado ou fora da rede): $e');
+      print('Erro de conexão ao enviar CSV: $e');
     }
   }
 
@@ -1724,15 +1737,15 @@ Arquivo contém dados completos das avaliações dos clientes.
     }
   }
 
-  String _getFriendlyPath(String path) {
-    // Simplificar o caminho para exibição
-    if (path.contains('/data/data/')) {
-      return 'Armazenamento Interno/App Documents';
-    } else if (path.contains('/storage/emulated/')) {
-      return 'Armazenamento Interno/Download';
-    }
-    return path;
-  }
+  // String _getFriendlyPath(String path) {
+  //   // Simplificar o caminho para exibição
+  //   if (path.contains('/data/data/')) {
+  //     return 'Armazenamento Interno/App Documents';
+  //   } else if (path.contains('/storage/emulated/')) {
+  //     return 'Armazenamento Interno/Download';
+  //   }
+  //   return path;
+  // }
 
   void _showError(BuildContext context, String message) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1741,72 +1754,72 @@ Arquivo contém dados completos das avaliações dos clientes.
   }
 
   // DIALOG DE SUCESSO COM AÇÕES FUNCIONAIS
-  Future<void> _showSuccessDialog(
-    BuildContext context,
-    String filePath,
-    String fileName,
-  ) async {
-    final result = await showDialog<int>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Arquivo Salvo!'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Arquivo salvo com sucesso:'),
-            const SizedBox(height: 8),
-            Text(
-              fileName,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.blue,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Local: ${_getFriendlyPath(filePath)}',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(1),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.open_in_browser, size: 18),
-                SizedBox(width: 4),
-                Text('Abrir Arquivo'),
-              ],
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(2),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.folder_open, size: 18),
-                SizedBox(width: 4),
-                Text('Abrir Pasta'),
-              ],
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(0),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
+  // Future<void> _showSuccessDialog(
+  //   BuildContext context,
+  //   String filePath,
+  //   String fileName,
+  // ) async {
+  //   final result = await showDialog<int>(
+  //     context: context,
+  //     builder: (context) => AlertDialog(
+  //       title: const Text('Arquivo Salvo!'),
+  //       content: Column(
+  //         mainAxisSize: MainAxisSize.min,
+  //         crossAxisAlignment: CrossAxisAlignment.start,
+  //         children: [
+  //           const Text('Arquivo salvo com sucesso:'),
+  //           const SizedBox(height: 8),
+  //           Text(
+  //             fileName,
+  //             style: const TextStyle(
+  //               fontWeight: FontWeight.bold,
+  //               color: Colors.blue,
+  //             ),
+  //           ),
+  //           const SizedBox(height: 8),
+  //           Text(
+  //             'Local: ${_getFriendlyPath(filePath)}',
+  //             style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+  //           ),
+  //         ],
+  //       ),
+  //       actions: [
+  //         TextButton(
+  //           onPressed: () => Navigator.of(context).pop(1),
+  //           child: const Row(
+  //             mainAxisSize: MainAxisSize.min,
+  //             children: [
+  //               Icon(Icons.open_in_browser, size: 18),
+  //               SizedBox(width: 4),
+  //               Text('Abrir Arquivo'),
+  //             ],
+  //           ),
+  //         ),
+  //         TextButton(
+  //           onPressed: () => Navigator.of(context).pop(2),
+  //           child: const Row(
+  //             mainAxisSize: MainAxisSize.min,
+  //             children: [
+  //               Icon(Icons.folder_open, size: 18),
+  //               SizedBox(width: 4),
+  //               Text('Abrir Pasta'),
+  //             ],
+  //           ),
+  //         ),
+  //         TextButton(
+  //           onPressed: () => Navigator.of(context).pop(0),
+  //           child: const Text('OK'),
+  //         ),
+  //       ],
+  //     ),
+  //   );
 
-    if (result == 1) {
-      await _openFile(context, filePath);
-    } else if (result == 2) {
-      await _openFolder(context, filePath);
-    }
-  }
+  //   if (result == 1) {
+  //     await _openFile(context, filePath);
+  //   } else if (result == 2) {
+  //     await _openFolder(context, filePath);
+  //   }
+  // }
 
   // MÉTODO PARA FORMATAR A UNIDADE NO CSV
   String _getUnitForCSV() {
@@ -1891,12 +1904,14 @@ class _ExportOptionsDialogWithTimeoutState
   void _handleSaveToDevice() {
     _resetTimerOnInteraction();
     Navigator.of(context).pop(1);
+    // Chama o método seguro que criamos no passo anterior
     widget.appData._saveToDownloads(context, widget.csvData);
   }
 
   void _handleShare() {
     _resetTimerOnInteraction();
     Navigator.of(context).pop(2);
+    // Chama o método de compartilhar
     widget.appData._shareFile(context, widget.csvData);
   }
 
@@ -2828,6 +2843,8 @@ class _AppTabsControllerState extends State<AppTabsController> {
 
   // Método para verificar permissão e mostrar o Dialog explicativo
   Future<void> _checkAndRequestPermission() async {
+    if (kIsWeb) return;
+
     // Verifica se já temos a permissão
     var status = await Permission.manageExternalStorage.status;
 
@@ -2892,8 +2909,11 @@ class _AppTabsControllerState extends State<AppTabsController> {
     // Inicializa o turno com o valor padrão
     _currentShift = _calculateDefaultShift();
     _startInactivityTimer(); // INICIA O TIMER// Força o modo imersivo (esconde botões do Android) sempre que a tela inicia
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    _enableKioskMode();
+
+    if (!kIsWeb) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      _enableKioskMode();
+    }
     WakelockPlus.enable(); // Dizer ao tablet para NUNCA desligar a tela enquanto o app estiver aberto
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkAndRequestPermission();
@@ -2902,6 +2922,8 @@ class _AppTabsControllerState extends State<AppTabsController> {
 
   // TENTA ATIVAR O MODO KIOSK (BLOQUEIA HOME E RECENTES)
   Future<void> _enableKioskMode() async {
+    if (kIsWeb) return;
+
     try {
       await platform.invokeMethod('startKiosk');
     } catch (e) {
@@ -2913,6 +2935,8 @@ class _AppTabsControllerState extends State<AppTabsController> {
 
   // TENTA DESATIVAR O MODO KIOSK PARA SAIR
   Future<void> _disableKioskMode() async {
+    if (kIsWeb) return;
+
     try {
       await platform.invokeMethod('stopKiosk');
     } catch (e) {
@@ -3627,7 +3651,7 @@ class _RatingScreenState extends State<RatingScreen> {
   // FRASES DE RESTAURANTE
   static const Map<String, List<String>> _restaurantPhrases = {
     'Comida Positiva': ['Bem Temperada', 'Comida quente', 'Boa Variedade'],
-    'Comida Negativa': ['Gosto Ruim', 'Comida Fria', 'Aparência Estranha'],
+    'Comida Negativa': ['Sem Sal', 'Comida Fria', 'Crua/ Mal cozida'],
     'Serviço Positiva': [
       'Funcionários Atenciosos',
       'Reposição Rápida',
@@ -4795,23 +4819,23 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     appData.exportCSV(context);
   }
 
-  Widget _buildQuickAccessButton(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 56.0, vertical: 8.0),
-      child: OutlinedButton.icon(
-        onPressed: () {
-          final appData = Provider.of<AppData>(context, listen: false);
-          appData.openLastSavedFile(context);
-        },
-        icon: const Icon(Icons.folder_open, size: 18),
-        label: const Text('Abrir Pasta do Último Arquivo'),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: const Color.fromARGB(255, 111, 136, 63),
-          side: const BorderSide(color: Color.fromARGB(255, 111, 136, 63)),
-        ),
-      ),
-    );
-  }
+  // Widget _buildQuickAccessButton(BuildContext context) {
+  //   return Padding(
+  //     padding: const EdgeInsets.symmetric(horizontal: 56.0, vertical: 8.0),
+  //     child: OutlinedButton.icon(
+  //       onPressed: () {
+  //         final appData = Provider.of<AppData>(context, listen: false);
+  //         appData.openLastSavedFile(context);
+  //       },
+  //       icon: const Icon(Icons.folder_open, size: 18),
+  //       label: const Text('Abrir Pasta do Último Arquivo'),
+  //       style: OutlinedButton.styleFrom(
+  //         foregroundColor: const Color.fromARGB(255, 111, 136, 63),
+  //         side: const BorderSide(color: Color.fromARGB(255, 111, 136, 63)),
+  //       ),
+  //     ),
+  //   );
+  // }
 
   // MOSTRAR OPÇÕES DE EXPORTAÇÃO
   void _showExportOptions(BuildContext context) {

@@ -1,4 +1,4 @@
-package com.example.app_restaurante
+package com.costafoods.feedbacks
 
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
