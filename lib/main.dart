@@ -96,6 +96,7 @@ class AppData extends ChangeNotifier {
     'Matrizeiro Esmeraldas',
     'Matrizeiro C. do Cajuru',
     'Armazém de Grãos',
+    'Teste',
   ];
 
   // LISTA DE TIPOS DE UNIFORME PARA MATRIZ
@@ -3649,30 +3650,63 @@ class _RatingScreenState extends State<RatingScreen> {
   bool _isResettingFromOutside = false; // CONTROLE PARA EVITAR LOOP
 
   // FRASES DE RESTAURANTE
-  static const Map<String, List<String>> _restaurantPhrases = {
-    'Comida Positiva': ['Bem Temperada', 'Comida quente', 'Boa Variedade'],
-    'Comida Negativa': ['Sem Sal', 'Comida Fria', 'Crua/ Mal cozida'],
-    'Serviço Positiva': [
-      'Funcionários Atenciosos',
-      'Reposição Rápida',
-      'Organização Eficiente',
-    ],
-    'Serviço Negativa': [
-      'Atendimento Lento',
-      'Demora na Limpeza',
-      'Filas Grandes',
-    ],
-    'Ambiente Positiva': [
-      'Ambiente Limpo',
-      'Climatização Boa',
-      'Ambiente Silencioso',
-    ],
-    'Ambiente Negativa': [
-      'Ambiente Sujo',
-      'Climatização Ruim',
-      'Ambiente Barulhento',
-    ],
-  };
+  Map<String, List<String>> _getRestaurantPhrases(int shift) {
+    // Se for Café da Manhã (1) ou Café da Tarde (3)
+    if (shift == 1 || shift == 3) {
+      return {
+        'Comida Positiva': ['Café quente', 'Pão saboroso', 'Leite quente'],
+        'Comida Negativa': ['Café frio', 'Pão ruim', 'Leite azedo'],
+        // Serviço e Ambiente continuam os mesmos
+        'Serviço Positiva': [
+          'Funcionários Atenciosos',
+          'Reposição Rápida',
+          'Organização Eficiente',
+        ],
+        'Serviço Negativa': [
+          'Atendimento Lento',
+          'Demora na Limpeza',
+          'Filas Grandes',
+        ],
+        'Ambiente Positiva': [
+          'Ambiente Limpo',
+          'Climatização Boa',
+          'Ambiente Silencioso',
+        ],
+        'Ambiente Negativa': [
+          'Ambiente Sujo',
+          'Climatização Ruim',
+          'Ambiente Barulhento',
+        ],
+      };
+    }
+    // Se for Almoço (2), Jantar (4) ou Ceia (5)
+    else {
+      return {
+        'Comida Positiva': ['Bem Temperada', 'Comida quente', 'Boa Variedade'],
+        'Comida Negativa': ['Sem Sal', 'Comida Fria', 'Crua/ Mal cozida'],
+        'Serviço Positiva': [
+          'Funcionários Atenciosos',
+          'Reposição Rápida',
+          'Organização Eficiente',
+        ],
+        'Serviço Negativa': [
+          'Atendimento Lento',
+          'Demora na Limpeza',
+          'Filas Grandes',
+        ],
+        'Ambiente Positiva': [
+          'Ambiente Limpo',
+          'Climatização Boa',
+          'Ambiente Silencioso',
+        ],
+        'Ambiente Negativa': [
+          'Ambiente Sujo',
+          'Climatização Ruim',
+          'Ambiente Barulhento',
+        ],
+      };
+    }
+  }
 
   // FRASES DE AMBIENTAÇÃO DA EMPRESA
   static const Map<String, List<String>> _orgPhrases = {
@@ -3696,7 +3730,9 @@ class _RatingScreenState extends State<RatingScreen> {
   // Getter que seleciona baseado na constante do AppData
   Map<String, List<String>> _getPhrases() {
     final appData = Provider.of<AppData>(context, listen: false);
-    return appData.appFunctionality == 1 ? _restaurantPhrases : _orgPhrases;
+    return appData.appFunctionality == 1
+        ? _getRestaurantPhrases(widget.currentShift)
+        : _orgPhrases;
   }
 
   @override
