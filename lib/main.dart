@@ -459,7 +459,8 @@ class AppData extends ChangeNotifier {
   // Adiciona um novo registro de avaliação
   void addEvaluationRecord({
     required int star,
-    required int shift,
+    required int
+    shift, // O app vai ignorar esse valor da tela congelada e usar o turno real do momento da avaliação
     required Set<String> positiveFeedbacks,
     required Set<String> negativeFeedbacks,
     String? comment,
@@ -474,6 +475,9 @@ class AppData extends ChangeNotifier {
       RegExp(r'\.\d+'),
       '',
     );
+
+    // IGNORA A TELA E CALCULA O TURNO EXATO
+    final int turnoExato = getLiveShift();
 
     final newRecord = {
       'timestamp': timestamp,
@@ -716,13 +720,41 @@ class AppData extends ChangeNotifier {
   }
 
   Future<void> loadDataFromCSV() async {
-    final prefs = await SharedPreferences.getInstance();
+    String? csvString;
 
-    // Tenta carregar os dados salvos anteriormente
-    final csvString = prefs.getString('backup_database_$appFunctionality');
+    // =========================================================
+    // 1. TENTA LER DO ARQUIVO FÍSICO NA PASTA DOWNLOADS PRIMEIRO (BLINDAGEM)
+    // =========================================================
+    try {
+      if (Platform.isAndroid) {
+        final filePath = await _getFilePath();
+        final file = File(filePath);
 
+        if (await file.exists()) {
+          csvString = await file.readAsString(encoding: utf8);
+          print("Sucesso: Dados resgatados do arquivo físico em Downloads!");
+        }
+      }
+    } catch (e) {
+      print(
+        "Aviso: Não foi possível ler o arquivo físico. Tentando cofre interno. Erro: $e",
+      );
+    }
+
+    // =========================================================
+    // 2. SE FALHAR (ou se for Web), LÊ DO COFRE INTERNO (SharedPreferences)
+    // =========================================================
+    if (csvString == null || csvString.isEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      csvString = prefs.getString('backup_database_$appFunctionality');
+    }
+
+    // Se continuar vazio, aborta (é realmente a primeira vez usando o app)
     if (csvString == null || csvString.isEmpty) return;
 
+    // =========================================================
+    // 3. RECONSTRÓI A LISTA DE AVALIAÇÕES NA MEMÓRIA
+    // =========================================================
     final csvData = const CsvToListConverter(
       fieldDelimiter: ';',
     ).convert(csvString);
@@ -1839,6 +1871,24 @@ Arquivo contém dados completos das avaliações dos clientes.
     }
     return _selectedUnit ?? 'Não definida';
   }
+
+  // NOVA FUNÇÃO: Calcula o turno ao vivo no momento exato do clique
+  int getLiveShift() {
+    final now = DateTime.now();
+    final int minutes = (now.hour * 60) + now.minute;
+
+    if (minutes >= 145 && minutes < 585) {
+      return 1; // Café da Manhã (02:25 até 09:44)
+    } else if (minutes >= 585 && minutes <= 826) {
+      return 2; // Almoço (09:45 até 13:46)
+    } else if (minutes >= 827 && minutes < 1150) {
+      return 3; // Café da Tarde (13:47 até 19:09)
+    } else if (minutes >= 1150 && minutes <= 1408) {
+      return 4; // Jantar (19:10 até 23:28)
+    } else {
+      return 5; // Ceia (23:29 até 02:24)
+    }
+  }
 }
 
 // CLASSE PARA DIALOG DE OPÇÕES DE EXPORTAÇÃO COM TIMEOUT
@@ -2765,7 +2815,8 @@ class AppTabsController extends StatefulWidget {
   State<AppTabsController> createState() => _AppTabsControllerState();
 }
 
-class _AppTabsControllerState extends State<AppTabsController> {
+class _AppTabsControllerState extends State<AppTabsController>
+    with WidgetsBindingObserver {
   int _selectedIndex = 0;
   int _currentShift = 1; // Estado do turno atual (1 ou 2)
 
@@ -2907,6 +2958,7 @@ class _AppTabsControllerState extends State<AppTabsController> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // LIGA O OLHEIRO
     // Inicializa o turno com o valor padrão
     _currentShift = _calculateDefaultShift();
     _startInactivityTimer(); // INICIA O TIMER// Força o modo imersivo (esconde botões do Android) sempre que a tela inicia
@@ -2947,12 +2999,35 @@ class _AppTabsControllerState extends State<AppTabsController> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this); // DESLIGA O OLHEIRO
     _inactivityTimer?.cancel();
     _keyboardInactivityTimer?.cancel();
     _passwordController.dispose(); // DISPOSE DO CONTROLLER
     _countdownTimer?.cancel(); // CANCELA TIMER DO CONTADOR
     WakelockPlus.disable(); // Libera a tela para apagar normalmente se o app for fechado
     super.dispose();
+  }
+
+  // NOVA FUNÇÃO: Roda sempre que o app sai do segundo plano e volta para a tela
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // O app acabou de voltar para a tela! Vamos checar o horário.
+      final int liveShift =
+          _calculateDefaultShift(); // Ou use appData.getLiveShift() se preferir
+
+      // Se o horário ao vivo for diferente do que está congelado na tela...
+      if (liveShift != _currentShift) {
+        setState(() {
+          _currentShift = liveShift; // Atualiza o turno
+        });
+
+        // E se quiser garantir que a tela volte para o início caso mude de turno:
+        if (_selectedIndex != 0) {
+          _resetHomeScreen();
+        }
+      }
+    }
   }
 
   // INICIA O TIMER DE INATIVIDADE

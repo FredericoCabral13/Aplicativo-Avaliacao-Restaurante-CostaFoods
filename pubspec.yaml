@@ -1,7 +1,7 @@
 name: costa_foods_feedbacks
 description: "Aplicativo para coleta de feedbacks do restaurante da CostaFoods."
 publish_to: "none"
-version: 1.0.5+6
+version: 1.0.6+7
 
 environment:
   sdk: ^3.9.2
