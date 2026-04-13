@@ -1211,24 +1211,43 @@ class AppData extends ChangeNotifier {
   Future<String> _generateFilteredCSVContent() async {
     final List<List<dynamic>> csvData = [];
 
-    // 1. NOVO CABEÇALHO (13 COLUNAS)
-    csvData.add([
-      'Unidade',
-      'Data/Hora',
-      'Turno',
-      'Avaliação',
-      'Categoria',
-      'Status de Satisfação',
-      'refeição_positivo',
-      'refeição_negativo',
-      'serviço_positivo',
-      'serviço_negativo',
-      'ambiente_positivo',
-      'ambiente_negativo',
-      'Comentário',
-    ]);
+    // ==============================================================
+    // 1. CABEÇALHO DINÂMICO DA EXPORTAÇÃO
+    // ==============================================================
+    if (appFunctionality == 1) {
+      csvData.add([
+        'Unidade',
+        'Data/Hora',
+        'Turno',
+        'Avaliação',
+        'Categoria',
+        'Status de Satisfação',
+        'refeição_positivo',
+        'refeição_negativo',
+        'serviço_positivo',
+        'serviço_negativo',
+        'ambiente_positivo',
+        'ambiente_negativo',
+        'Comentário',
+      ]);
+    } else {
+      csvData.add([
+        'Unidade',
+        'Data/Hora',
+        'Turno',
+        'Avaliação',
+        'Categoria',
+        'Status de Satisfação',
+        'acolhimento_positivo',
+        'acolhimento_negativo',
+        'organizacao_positivo',
+        'organizacao_negativo',
+        'conteudo_positivo',
+        'conteudo_negativo',
+        'Comentário',
+      ]);
+    }
 
-    // DEBUG: Mostrar informações do filtro
     print('🎯 FILTRO APLICADO:');
     print('   Data Inicial: $_selectedStartDate');
     print('   Data Final: $_selectedEndDate');
@@ -1241,7 +1260,6 @@ class AppData extends ChangeNotifier {
         recordDate.day,
       );
 
-      // APLICA FILTRO DE DATAS
       if (_selectedStartDate != null && _selectedEndDate != null) {
         final startDay = DateTime(
           _selectedStartDate!.year,
@@ -1262,7 +1280,7 @@ class AppData extends ChangeNotifier {
         final shouldInclude = isAfterOrEqualStart && isBeforeOrEqualEnd;
 
         if (!shouldInclude) {
-          continue; // Pula registros fora do intervalo
+          continue;
         }
       }
 
@@ -1279,9 +1297,6 @@ class AppData extends ChangeNotifier {
       final String satisfactionStatus =
           record['satisfacao']?.toString() ?? _getSatisfactionStatus(stars);
 
-      // ==============================================================
-      // 2. LÓGICA DE SEPARAÇÃO DAS FRASES NAS COLUNAS
-      // ==============================================================
       String refPos = "";
       String refNeg = "";
       String serPos = "";
@@ -1293,7 +1308,6 @@ class AppData extends ChangeNotifier {
           ? getRestaurantPhrases(record['turno'] as int)
           : orgPhrases;
 
-      // Filtra os Positivos
       final positivosList = (record['positivos'] as String? ?? '')
           .split('; ')
           .where((p) => p.isNotEmpty);
@@ -1315,7 +1329,6 @@ class AppData extends ChangeNotifier {
         }
       }
 
-      // Filtra os Negativos
       final negativosList = (record['negativos'] as String? ?? '')
           .split('; ')
           .where((p) => p.isNotEmpty);
@@ -1336,9 +1349,7 @@ class AppData extends ChangeNotifier {
             ambNeg += (ambNeg.isEmpty ? "" : "; ") + p;
         }
       }
-      // ==============================================================
 
-      // 3. ADICIONA A LINHA COM AS 13 COLUNAS
       csvData.add([
         getFullUnitName(),
         record['timestamp'],
@@ -1807,21 +1818,42 @@ Arquivo contém dados completos das avaliações dos clientes.
   Future<String> _generateCSVContent() async {
     final List<List<dynamic>> csvData = [];
 
-    csvData.add([
-      'Unidade',
-      'Data/Hora',
-      'Turno',
-      'Avaliação',
-      'Categoria',
-      'Status de Satisfação',
-      'refeição_positivo',
-      'refeição_negativo',
-      'serviço_positivo',
-      'serviço_negativo',
-      'ambiente_positivo',
-      'ambiente_negativo',
-      'Comentário',
-    ]);
+    // ==============================================================
+    // 1. CABEÇALHO DINÂMICO (Muda conforme a funcionalidade)
+    // ==============================================================
+    if (appFunctionality == 1) {
+      csvData.add([
+        'Unidade',
+        'Data/Hora',
+        'Turno',
+        'Avaliação',
+        'Categoria',
+        'Status de Satisfação',
+        'refeição_positivo',
+        'refeição_negativo',
+        'serviço_positivo',
+        'serviço_negativo',
+        'ambiente_positivo',
+        'ambiente_negativo',
+        'Comentário',
+      ]);
+    } else {
+      csvData.add([
+        'Unidade',
+        'Data/Hora',
+        'Turno',
+        'Avaliação',
+        'Categoria',
+        'Status de Satisfação',
+        'acolhimento_positivo',
+        'acolhimento_negativo',
+        'organizacao_positivo',
+        'organizacao_negativo',
+        'conteudo_positivo',
+        'conteudo_negativo',
+        'Comentário',
+      ]);
+    }
 
     for (var record in allEvaluationRecords) {
       final int stars = record['estrelas'] as int;
