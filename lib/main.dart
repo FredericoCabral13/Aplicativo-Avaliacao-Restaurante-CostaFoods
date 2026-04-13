@@ -48,7 +48,7 @@ class AppData extends ChangeNotifier {
 
   // =============================================================
   // CONFIGURAÇÃO GERAL PARA DEFINIR A FUNCIONALIDADE DO APP
-  // 1 = Restaurante (Comida, Serviço, Ambiente)
+  // 1 = Restaurante (Refeição, Serviço, Ambiente)
   // 2 = Ambientação da Empresa (Acolhimento, Organização, Conteúdo)
   int? _appFunctionality;
 
@@ -167,6 +167,85 @@ class AppData extends ChangeNotifier {
     'Boas apresentações': true,
     'Conteúdo à melhorar': false,
     'Informações superficiais': false,
+  };
+
+  // ===============================================================
+  // MAPAS DE FRASES (Públicos)
+  // ===============================================================
+  Map<String, List<String>> getRestaurantPhrases(int shift) {
+    if (shift == 1 || shift == 3) {
+      return {
+        'Refeição Positiva': ['Café quente', 'Pão saboroso', 'Leite quente'],
+        'Refeição Negativa': ['Café frio', 'Pão ruim', 'Leite azedo'],
+        'Serviço Positiva': [
+          'Funcionários Atenciosos',
+          'Reposição Rápida',
+          'Organização Eficiente',
+        ],
+        'Serviço Negativa': [
+          'Atendimento Lento',
+          'Demora na Limpeza',
+          'Filas Grandes',
+        ],
+        'Ambiente Positiva': [
+          'Ambiente Limpo',
+          'Climatização Boa',
+          'Ambiente Silencioso',
+        ],
+        'Ambiente Negativa': [
+          'Ambiente Sujo',
+          'Climatização Ruim',
+          'Ambiente Barulhento',
+        ],
+      };
+    } else {
+      return {
+        'Refeição Positiva': [
+          'Bem Temperada',
+          'Refeição quente',
+          'Boa Variedade',
+        ],
+        'Refeição Negativa': ['Sem Sal', 'Refeição fria', 'Crua/ Mal cozida'],
+        'Serviço Positiva': [
+          'Funcionários Atenciosos',
+          'Reposição Rápida',
+          'Organização Eficiente',
+        ],
+        'Serviço Negativa': [
+          'Atendimento Lento',
+          'Demora na Limpeza',
+          'Filas Grandes',
+        ],
+        'Ambiente Positiva': [
+          'Ambiente Limpo',
+          'Climatização Boa',
+          'Ambiente Silencioso',
+        ],
+        'Ambiente Negativa': [
+          'Ambiente Sujo',
+          'Climatização Ruim',
+          'Ambiente Barulhento',
+        ],
+      };
+    }
+  }
+
+  final Map<String, List<String>> orgPhrases = {
+    'Acolhimento e Recepção Positiva': [
+      'Achei acolhedor',
+      'Me senti bem-vindo(a)',
+    ],
+    'Acolhimento e Recepção Negativa': [
+      'Melhorar recepção',
+      'Melhorar acolhimento',
+    ],
+    'Organização Positiva': ['Dia organizado', 'Fluxo claro'],
+    'Organização Negativa': ['Faltou orientação', 'Fluxo confuso'],
+    'Conteúdo Apresentado Positiva': ['Conteúdo legal', 'Boas apresentações'],
+    'Conteúdo Apresentado Negativa': [
+      'Conteúdo à melhorar',
+      'Informações superficiais',
+    ],
   };
 
   // Getter inteligente que escolhe qual usar
@@ -648,57 +727,14 @@ class AppData extends ChangeNotifier {
   }
 
   Future<void> saveDataToCSV() async {
-    List<List<dynamic>> csvData = [];
+    // 1. GERA O CSV USANDO A FUNÇÃO ATUALIZADA (COM AS 13 COLUNAS)
+    final csvString = await _generateCSVContent();
 
-    // Cabeçalho
-    csvData.add([
-      'timestamp',
-      'turno',
-      'estrelas',
-      'satisfacao',
-      'positivos_clicados',
-      'negativos_clicados',
-      'comentario',
-      'unidade',
-    ]);
-
-    // Linhas de dados
-    for (var record in allEvaluationRecords) {
-      final int stars = record['estrelas'] as int;
-      final String satisfacao = _getSatisfactionStatus(stars);
-
-      String nomeTurno;
-      if (appFunctionality == 1) {
-        nomeTurno = getPeriodName(record['turno'] as int);
-      } else {
-        nomeTurno = 'Ambientação';
-      }
-
-      csvData.add([
-        record['timestamp'],
-        nomeTurno,
-        record['estrelas'],
-        satisfacao,
-        record['positivos'],
-        record['negativos'],
-        record['comentario'],
-        _getUnitForCSV(),
-      ]);
-    }
-
-    final csvString = const ListToCsvConverter(
-      fieldDelimiter: ';',
-    ).convert(csvData);
-
-    // =========================================================
-    // 1. SALVA NO COFRE INTERNO INVISÍVEL (SharedPreferences)
-    // =========================================================
+    // 2. GUARDA NO COFRE INTERNO INVISÍVEL (SharedPreferences)
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('backup_database_$appFunctionality', csvString);
 
-    // =========================================================
-    // 2. SALVA O ARQUIVO FÍSICO NA PASTA DOWNLOADS (Android)
-    // =========================================================
+    // 3. GUARDA O FICHEIRO FÍSICO NA PASTA DOWNLOADS (Android)
     try {
       if (Platform.isAndroid) {
         final filePath = await _getFilePath();
@@ -707,24 +743,20 @@ class AppData extends ChangeNotifier {
         // Adiciona o BOM (\uFEFF) para o Excel ler os acentos (UTF-8) perfeitamente
         const String bom = '\uFEFF';
         await file.writeAsString(bom + csvString, encoding: utf8);
-        print("Arquivo salvo com sucesso em: $filePath");
+        print("Ficheiro guardado com sucesso em: $filePath");
       }
     } catch (e) {
-      print("Erro ao tentar salvar o arquivo físico: $e");
+      print("Erro ao tentar guardar o ficheiro físico: $e");
     }
 
-    // =========================================================
-    // 3. ENVIA PARA O SERVIDOR PYTHON
-    // =========================================================
+    // 4. ENVIA PARA O SERVIDOR PYTHON
     _sendCSVToComputer();
   }
 
   Future<void> loadDataFromCSV() async {
     String? csvString;
 
-    // =========================================================
-    // 1. TENTA LER DO ARQUIVO FÍSICO NA PASTA DOWNLOADS PRIMEIRO (BLINDAGEM)
-    // =========================================================
+    // 1. TENTA LER DO FICHEIRO FÍSICO NA PASTA DOWNLOADS PRIMEIRO
     try {
       if (Platform.isAndroid) {
         final filePath = await _getFilePath();
@@ -732,42 +764,37 @@ class AppData extends ChangeNotifier {
 
         if (await file.exists()) {
           csvString = await file.readAsString(encoding: utf8);
-          print("Sucesso: Dados resgatados do arquivo físico em Downloads!");
+          // Remove o BOM se existir para não dar erro na leitura
+          if (csvString.startsWith('\uFEFF')) {
+            csvString = csvString.substring(1);
+          }
         }
       }
     } catch (e) {
-      print(
-        "Aviso: Não foi possível ler o arquivo físico. Tentando cofre interno. Erro: $e",
-      );
+      print("Aviso: Não foi possível ler o ficheiro físico. Erro: $e");
     }
 
-    // =========================================================
-    // 2. SE FALHAR (ou se for Web), LÊ DO COFRE INTERNO (SharedPreferences)
-    // =========================================================
+    // 2. SE FALHAR, LÊ DO COFRE INTERNO (SharedPreferences)
     if (csvString == null || csvString.isEmpty) {
       final prefs = await SharedPreferences.getInstance();
       csvString = prefs.getString('backup_database_$appFunctionality');
     }
 
-    // Se continuar vazio, aborta (é realmente a primeira vez usando o app)
     if (csvString == null || csvString.isEmpty) return;
 
-    // =========================================================
-    // 3. RECONSTRÓI A LISTA DE AVALIAÇÕES NA MEMÓRIA
-    // =========================================================
     final csvData = const CsvToListConverter(
       fieldDelimiter: ';',
     ).convert(csvString);
-
     allEvaluationRecords.clear();
 
     // Pula o cabeçalho (linha 0)
     for (int i = 1; i < csvData.length; i++) {
       final row = csvData[i];
 
-      if (row.length >= 7) {
+      // LÊ O NOVO FORMATO (13 COLUNAS)
+      if (row.length >= 12) {
         int turnoId = 1;
-        final turnoRaw = row[1];
+        final turnoRaw = row[2]; // Turno agora é a coluna 2
 
         if (turnoRaw is int) {
           turnoId = turnoRaw;
@@ -779,26 +806,57 @@ class AppData extends ChangeNotifier {
           }
         }
 
+        // Reconstrói os positivos e negativos juntando as colunas separadas
+        List<String> posList = [
+          row[6].toString(),
+          row[8].toString(),
+          row[10].toString(),
+        ];
+        List<String> negList = [
+          row[7].toString(),
+          row[9].toString(),
+          row[11].toString(),
+        ];
+
+        String positivos = posList.where((p) => p.trim().isNotEmpty).join('; ');
+        String negativos = negList.where((p) => p.trim().isNotEmpty).join('; ');
+
+        String comentario = row.length >= 13 ? row[12].toString() : '';
+
+        Map<String, dynamic> record = {
+          'unidade_csv': row[0].toString(),
+          'timestamp': row[1].toString(),
+          'turno': turnoId,
+          'estrelas': int.tryParse(row[3].toString()) ?? 5,
+          'satisfacao': row[5].toString(),
+          'positivos': positivos,
+          'negativos': negativos,
+          'comentario': comentario,
+        };
+
+        allEvaluationRecords.add(record);
+      }
+      // PROTEÇÃO: Se por acaso encontrar um ficheiro com o formato antigo de 8 colunas
+      else if (row.length >= 7) {
+        int turnoId = 1;
+        final turnoRaw = row[1];
+
+        if (turnoRaw is int) {
+          turnoId = turnoRaw;
+        } else {
+          turnoId = _getShiftIdByName(turnoRaw.toString());
+        }
+
         Map<String, dynamic> record = {
           'timestamp': row[0].toString(),
           'turno': turnoId,
-          'estrelas': row[2] as int,
+          'estrelas': int.tryParse(row[2].toString()) ?? 5,
+          'satisfacao': row.length > 3 ? row[3].toString() : '',
           'positivos': row[4].toString(),
           'negativos': row[5].toString(),
           'comentario': row[6].toString(),
+          'unidade_csv': row.length > 7 ? row[7].toString() : '',
         };
-
-        if (row.length > 3) {
-          record['satisfacao'] = row[3].toString();
-        } else {
-          final int stars = row[2] as int;
-          record['satisfacao'] = _getSatisfactionStatus(stars);
-        }
-
-        if (row.length >= 8) {
-          record['unidade_csv'] = row[7].toString();
-        }
-
         allEvaluationRecords.add(record);
       }
     }
@@ -1149,11 +1207,11 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  // GERAR CONTEÚDO CSV FILTRADO POR DATA
-  // GERAR CONTEÚDO CSV FILTRADO POR DATA
+  // GERAR CONTEÚDO CSV FILTRADO POR DATA (Usado no método de exportação manual com filtro de data)
   Future<String> _generateFilteredCSVContent() async {
     final List<List<dynamic>> csvData = [];
 
+    // 1. NOVO CABEÇALHO (13 COLUNAS)
     csvData.add([
       'Unidade',
       'Data/Hora',
@@ -1161,8 +1219,12 @@ class AppData extends ChangeNotifier {
       'Avaliação',
       'Categoria',
       'Status de Satisfação',
-      'Feedbacks Positivos',
-      'Feedbacks Negativos',
+      'refeição_positivo',
+      'refeição_negativo',
+      'serviço_positivo',
+      'serviço_negativo',
+      'ambiente_positivo',
+      'ambiente_negativo',
       'Comentário',
     ]);
 
@@ -1179,7 +1241,7 @@ class AppData extends ChangeNotifier {
         recordDate.day,
       );
 
-      // APLICA FILTRO CORRETAMENTE
+      // APLICA FILTRO DE DATAS
       if (_selectedStartDate != null && _selectedEndDate != null) {
         final startDay = DateTime(
           _selectedStartDate!.year,
@@ -1207,7 +1269,6 @@ class AppData extends ChangeNotifier {
       final int stars = record['estrelas'] as int;
       final category = getCategoryName(stars);
 
-      // LÓGICA CONDICIONAL ADICIONADA AQUI TAMBÉM
       String turno;
       if (appFunctionality == 1) {
         turno = getPeriodName(record['turno'] as int);
@@ -1218,6 +1279,66 @@ class AppData extends ChangeNotifier {
       final String satisfactionStatus =
           record['satisfacao']?.toString() ?? _getSatisfactionStatus(stars);
 
+      // ==============================================================
+      // 2. LÓGICA DE SEPARAÇÃO DAS FRASES NAS COLUNAS
+      // ==============================================================
+      String refPos = "";
+      String refNeg = "";
+      String serPos = "";
+      String serNeg = "";
+      String ambPos = "";
+      String ambNeg = "";
+
+      final frases = appFunctionality == 1
+          ? getRestaurantPhrases(record['turno'] as int)
+          : orgPhrases;
+
+      // Filtra os Positivos
+      final positivosList = (record['positivos'] as String? ?? '')
+          .split('; ')
+          .where((p) => p.isNotEmpty);
+      for (var p in positivosList) {
+        if (appFunctionality == 1) {
+          if (frases['Refeição Positiva']!.contains(p))
+            refPos += (refPos.isEmpty ? "" : "; ") + p;
+          else if (frases['Serviço Positiva']!.contains(p))
+            serPos += (serPos.isEmpty ? "" : "; ") + p;
+          else if (frases['Ambiente Positiva']!.contains(p))
+            ambPos += (ambPos.isEmpty ? "" : "; ") + p;
+        } else {
+          if (frases['Acolhimento e Recepção Positiva']!.contains(p))
+            refPos += (refPos.isEmpty ? "" : "; ") + p;
+          else if (frases['Organização Positiva']!.contains(p))
+            serPos += (serPos.isEmpty ? "" : "; ") + p;
+          else if (frases['Conteúdo Apresentado Positiva']!.contains(p))
+            ambPos += (ambPos.isEmpty ? "" : "; ") + p;
+        }
+      }
+
+      // Filtra os Negativos
+      final negativosList = (record['negativos'] as String? ?? '')
+          .split('; ')
+          .where((p) => p.isNotEmpty);
+      for (var p in negativosList) {
+        if (appFunctionality == 1) {
+          if (frases['Refeição Negativa']!.contains(p))
+            refNeg += (refNeg.isEmpty ? "" : "; ") + p;
+          else if (frases['Serviço Negativa']!.contains(p))
+            serNeg += (serNeg.isEmpty ? "" : "; ") + p;
+          else if (frases['Ambiente Negativa']!.contains(p))
+            ambNeg += (ambNeg.isEmpty ? "" : "; ") + p;
+        } else {
+          if (frases['Acolhimento e Recepção Negativa']!.contains(p))
+            refNeg += (refNeg.isEmpty ? "" : "; ") + p;
+          else if (frases['Organização Negativa']!.contains(p))
+            serNeg += (serNeg.isEmpty ? "" : "; ") + p;
+          else if (frases['Conteúdo Apresentado Negativa']!.contains(p))
+            ambNeg += (ambNeg.isEmpty ? "" : "; ") + p;
+        }
+      }
+      // ==============================================================
+
+      // 3. ADICIONA A LINHA COM AS 13 COLUNAS
       csvData.add([
         getFullUnitName(),
         record['timestamp'],
@@ -1225,8 +1346,12 @@ class AppData extends ChangeNotifier {
         '${record['estrelas']}',
         category,
         satisfactionStatus,
-        record['positivos'],
-        record['negativos'],
+        refPos,
+        refNeg,
+        serPos,
+        serNeg,
+        ambPos,
+        ambNeg,
         record['comentario'] ?? '',
       ]);
     }
@@ -1689,8 +1814,12 @@ Arquivo contém dados completos das avaliações dos clientes.
       'Avaliação',
       'Categoria',
       'Status de Satisfação',
-      'Feedbacks Positivos',
-      'Feedbacks Negativos',
+      'refeição_positivo',
+      'refeição_negativo',
+      'serviço_positivo',
+      'serviço_negativo',
+      'ambiente_positivo',
+      'ambiente_negativo',
       'Comentário',
     ]);
 
@@ -1698,7 +1827,7 @@ Arquivo contém dados completos das avaliações dos clientes.
       final int stars = record['estrelas'] as int;
       final category = getCategoryName(stars);
 
-      // LÓGICA CONDICIONAL CORRIGIDA
+      // LÓGICA CONDICIONAL
       String turno;
       if (appFunctionality == 1) {
         // 1 = Restaurante
@@ -1711,6 +1840,66 @@ Arquivo contém dados completos das avaliações dos clientes.
       final String satisfactionStatus =
           record['satisfacao']?.toString() ?? _getSatisfactionStatus(stars);
 
+      // ==============================================================
+      // INÍCIO DA SEPARAÇÃO DOS FEEDBACKS NAS 6 COLUNAS
+      // ==============================================================
+      String refPos = "";
+      String refNeg = "";
+      String serPos = "";
+      String serNeg = "";
+      String ambPos = "";
+      String ambNeg = "";
+
+      // Pega o mapa de frases correto para identificar a categoria
+      final frases = appFunctionality == 1
+          ? getRestaurantPhrases(record['turno'] as int)
+          : orgPhrases;
+
+      // Filtra os Positivos
+      final positivosList = (record['positivos'] as String? ?? '')
+          .split('; ')
+          .where((p) => p.isNotEmpty);
+      for (var p in positivosList) {
+        if (appFunctionality == 1) {
+          if (frases['Refeição Positiva']!.contains(p))
+            refPos += (refPos.isEmpty ? "" : "; ") + p;
+          else if (frases['Serviço Positiva']!.contains(p))
+            serPos += (serPos.isEmpty ? "" : "; ") + p;
+          else if (frases['Ambiente Positiva']!.contains(p))
+            ambPos += (ambPos.isEmpty ? "" : "; ") + p;
+        } else {
+          if (frases['Acolhimento e Recepção Positiva']!.contains(p))
+            refPos += (refPos.isEmpty ? "" : "; ") + p;
+          else if (frases['Organização Positiva']!.contains(p))
+            serPos += (serPos.isEmpty ? "" : "; ") + p;
+          else if (frases['Conteúdo Apresentado Positiva']!.contains(p))
+            ambPos += (ambPos.isEmpty ? "" : "; ") + p;
+        }
+      }
+
+      // Filtra os Negativos
+      final negativosList = (record['negativos'] as String? ?? '')
+          .split('; ')
+          .where((p) => p.isNotEmpty);
+      for (var p in negativosList) {
+        if (appFunctionality == 1) {
+          if (frases['Refeição Negativa']!.contains(p))
+            refNeg += (refNeg.isEmpty ? "" : "; ") + p;
+          else if (frases['Serviço Negativa']!.contains(p))
+            serNeg += (serNeg.isEmpty ? "" : "; ") + p;
+          else if (frases['Ambiente Negativa']!.contains(p))
+            ambNeg += (ambNeg.isEmpty ? "" : "; ") + p;
+        } else {
+          if (frases['Acolhimento e Recepção Negativa']!.contains(p))
+            refNeg += (refNeg.isEmpty ? "" : "; ") + p;
+          else if (frases['Organização Negativa']!.contains(p))
+            serNeg += (serNeg.isEmpty ? "" : "; ") + p;
+          else if (frases['Conteúdo Apresentado Negativa']!.contains(p))
+            ambNeg += (ambNeg.isEmpty ? "" : "; ") + p;
+        }
+      }
+      // ==============================================================
+
       csvData.add([
         getFullUnitName(), // USA O NOME COMPLETO DA UNIDADE
         record['timestamp'],
@@ -1718,8 +1907,12 @@ Arquivo contém dados completos das avaliações dos clientes.
         '${record['estrelas']}',
         category,
         satisfactionStatus,
-        record['positivos'],
-        record['negativos'],
+        refPos, // Entra no lugar do record['positivos']
+        refNeg, // Entra no lugar do record['negativos']
+        serPos,
+        serNeg,
+        ambPos,
+        ambNeg,
         record['comentario'] ?? '',
       ]);
     }
@@ -3729,8 +3922,8 @@ class _RatingScreenState extends State<RatingScreen> {
     // Se for Café da Manhã (1) ou Café da Tarde (3)
     if (shift == 1 || shift == 3) {
       return {
-        'Comida Positiva': ['Café quente', 'Pão saboroso', 'Leite quente'],
-        'Comida Negativa': ['Café frio', 'Pão ruim', 'Leite azedo'],
+        'Refeição Positiva': ['Café quente', 'Pão saboroso', 'Leite quente'],
+        'Refeição Negativa': ['Café frio', 'Pão ruim', 'Leite azedo'],
         // Serviço e Ambiente continuam os mesmos
         'Serviço Positiva': [
           'Funcionários Atenciosos',
@@ -3757,8 +3950,12 @@ class _RatingScreenState extends State<RatingScreen> {
     // Se for Almoço (2), Jantar (4) ou Ceia (5)
     else {
       return {
-        'Comida Positiva': ['Bem Temperada', 'Comida quente', 'Boa Variedade'],
-        'Comida Negativa': ['Sem Sal', 'Comida Fria', 'Crua/ Mal cozida'],
+        'Refeição Positiva': [
+          'Bem Temperada',
+          'Comida quente',
+          'Boa Variedade',
+        ],
+        'Refeição Negativa': ['Sem Sal', 'Comida Fria', 'Crua/ Mal cozida'],
         'Serviço Positiva': [
           'Funcionários Atenciosos',
           'Reposição Rápida',
@@ -3908,12 +4105,12 @@ class _RatingScreenState extends State<RatingScreen> {
   void _handlePhraseSelection(String phrase) {
     if (_isResettingFromOutside) return; // PREVINE AÇÕES DURANTE RESET
     setState(() {
-      // 1. Identificar a categoria da frase clicada (Comida, Serviço ou Ambiente)
+      // 1. Identificar a categoria da frase clicada (Refeição, Serviço ou Ambiente)
       String? clickedCategory;
 
       _getPhrases().forEach((key, list) {
         if (list.contains(phrase)) {
-          // A chave é algo como 'Comida Positiva'. O split pega apenas 'Comida'.
+          // A chave é algo como 'Refeição Positiva'. O split pega apenas 'Refeição'.
           clickedCategory = key.split(' ')[0];
         }
       });
@@ -4283,7 +4480,7 @@ class DetailedFeedbackTab extends StatelessWidget {
             // SELECIONA A LISTA BASEADO NA CONSTANTE
             children:
                 (Provider.of<AppData>(context).appFunctionality == 1
-                        ? ['Comida', 'Serviço', 'Ambiente']
+                        ? ['Refeição', 'Serviço', 'Ambiente']
                         : [
                             'Acolhimento e Recepção',
                             'Organização',
@@ -4312,7 +4509,7 @@ class DetailedFeedbackTab extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children:
                 (Provider.of<AppData>(context).appFunctionality == 1
-                        ? ['Comida', 'Serviço', 'Ambiente']
+                        ? ['Refeição', 'Serviço', 'Ambiente']
                         : [
                             'Acolhimento e Recepção',
                             'Organização',
