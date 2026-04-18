@@ -32,6 +32,8 @@ import 'package:http/http.dart' as http; //
 
 import 'dart:io';
 
+import 'package:package_info_plus/package_info_plus.dart'; // VERSÃO DO APP NA INTERFACE MUDA DINAMICAMENTE
+
 // Definido uma ÚNICA vez no topo do arquivo
 typedef PhraseSelectedCallback = void Function(String phrase);
 
@@ -101,9 +103,9 @@ class AppData extends ChangeNotifier {
 
   // LISTA DE TIPOS DE UNIFORME PARA MATRIZ
   final List<String> uniformTypes = [
-    'Uniforme Branco',
-    'Uniforme Colorido',
     'Administrativo',
+    'Uniforme Branco',
+    //'Uniforme Colorido',
   ];
 
   String? _selectedUnit; // Unidade selecionada
@@ -6146,6 +6148,30 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                 ],
               ),
             ),
+          ),
+        ),
+        // VERSÃO AUTOMÁTICA NO CANTO SUPERIOR DIREITO
+        Positioned(
+          top: 5, // Distância do topo
+          right: 15, // Distância da direita
+          child: FutureBuilder<PackageInfo>(
+            future: PackageInfo.fromPlatform(),
+            builder: (context, snapshot) {
+              if (snapshot.hasData) {
+                // Puxa a versão (ex: 1.0.7) do pubspec.yaml
+                final version = snapshot.data!.version;
+
+                return Text(
+                  'V $version',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.grey.withOpacity(0.5),
+                    fontWeight: FontWeight.bold,
+                  ),
+                );
+              }
+              return const SizedBox.shrink(); // Fica invisível enquanto carrega
+            },
           ),
         ),
       ],
