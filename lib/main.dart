@@ -135,19 +135,32 @@ class AppData extends ChangeNotifier {
 
   // MAPA DE RESTAURANTE
   final Map<String, bool> _restaurantSentiment = const {
+    // REFEIÇÃO - ALMOÇO/JANTAR/CEIA
     'Bem Temperada': true,
     'Refeição Quente': true,
     'Boa Variedade': true,
     'Sem Sal': false,
     'Refeição Fria': false,
     'Crua/ Mal cozida': false,
+
+    // REFEIÇÃO - CAFÉ DA MANHÃ/TARDE
+    'Café Quente': true,
+    'Pão Saboroso': true,
+    'Leite Quente': true,
+    'Café': false,
+    'Pão': false,
+    'Leite': false,
+
+    // SERVIÇO
     'Funcionários Atenciosos': true,
     'Reposição Rápida': true,
     'Organização Eficiente': true,
     'Atendimento Lento': false,
     'Falta de Pratos ou Talheres': false,
-    'Demora na Limpeza': false,
+    'Demora na Limpeza': false, // Adicionado para os cafés
     'Filas Grandes': false,
+
+    // AMBIENTE
     'Ambiente Limpo': true,
     'Climatização Boa': true,
     'Ambiente Silencioso': true,
@@ -207,9 +220,15 @@ class AppData extends ChangeNotifier {
         'Refeição Positiva': [
           'Bem Temperada',
           'Refeição Quente',
+          'Comida Quente', // Para ler as avaliações ANTIGAS
           'Boa Variedade',
         ],
-        'Refeição Negativa': ['Sem Sal', 'Refeição Fria', 'Crua/ Mal cozida'],
+        'Refeição Negativa': [
+          'Sem Sal',
+          'Refeição Fria',
+          'Comida Fria', // Para ler as avaliações ANTIGAS
+          'Crua/ Mal cozida',
+        ],
         'Serviço Positiva': [
           'Funcionários Atenciosos',
           'Reposição Rápida',
