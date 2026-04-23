@@ -136,15 +136,16 @@ class AppData extends ChangeNotifier {
   // MAPA DE RESTAURANTE
   final Map<String, bool> _restaurantSentiment = const {
     'Bem Temperada': true,
-    'Comida quente': true,
+    'Refeição Quente': true,
     'Boa Variedade': true,
     'Sem Sal': false,
-    'Comida Fria': false,
+    'Refeição Fria': false,
     'Crua/ Mal cozida': false,
     'Funcionários Atenciosos': true,
     'Reposição Rápida': true,
     'Organização Eficiente': true,
     'Atendimento Lento': false,
+    'Falta de Pratos ou Talheres': false,
     'Demora na Limpeza': false,
     'Filas Grandes': false,
     'Ambiente Limpo': true,
@@ -176,9 +177,10 @@ class AppData extends ChangeNotifier {
   // ===============================================================
   Map<String, List<String>> getRestaurantPhrases(int shift) {
     if (shift == 1 || shift == 3) {
+      //CAFÉS
       return {
-        'Refeição Positiva': ['Café quente', 'Pão saboroso', 'Leite quente'],
-        'Refeição Negativa': ['Café frio', 'Pão ruim', 'Leite azedo'],
+        'Refeição Positiva': ['Café Quente', 'Pão Saboroso', 'Leite Quente'],
+        'Refeição Negativa': ['Café', 'Pão', 'Leite'],
         'Serviço Positiva': [
           'Funcionários Atenciosos',
           'Reposição Rápida',
@@ -204,10 +206,10 @@ class AppData extends ChangeNotifier {
       return {
         'Refeição Positiva': [
           'Bem Temperada',
-          'Refeição quente',
+          'Refeição Quente',
           'Boa Variedade',
         ],
-        'Refeição Negativa': ['Sem Sal', 'Refeição fria', 'Crua/ Mal cozida'],
+        'Refeição Negativa': ['Sem Sal', 'Refeição Fria', 'Crua/ Mal cozida'],
         'Serviço Positiva': [
           'Funcionários Atenciosos',
           'Reposição Rápida',
@@ -215,7 +217,7 @@ class AppData extends ChangeNotifier {
         ],
         'Serviço Negativa': [
           'Atendimento Lento',
-          'Demora na Limpeza',
+          'Falta de Pratos ou Talheres',
           'Filas Grandes',
         ],
         'Ambiente Positiva': [
@@ -3956,8 +3958,8 @@ class _RatingScreenState extends State<RatingScreen> {
     // Se for Café da Manhã (1) ou Café da Tarde (3)
     if (shift == 1 || shift == 3) {
       return {
-        'Refeição Positiva': ['Café quente', 'Pão saboroso', 'Leite quente'],
-        'Refeição Negativa': ['Café frio', 'Pão ruim', 'Leite azedo'],
+        'Refeição Positiva': ['Café Quente', 'Pão Saboroso', 'Leite Quente'],
+        'Refeição Negativa': ['Café', 'Pão', 'Leite'],
         // Serviço e Ambiente continuam os mesmos
         'Serviço Positiva': [
           'Funcionários Atenciosos',
@@ -3986,10 +3988,10 @@ class _RatingScreenState extends State<RatingScreen> {
       return {
         'Refeição Positiva': [
           'Bem Temperada',
-          'Comida quente',
+          'Refeição Quente',
           'Boa Variedade',
         ],
-        'Refeição Negativa': ['Sem Sal', 'Comida Fria', 'Crua/ Mal cozida'],
+        'Refeição Negativa': ['Sem Sal', 'Refeição Fria', 'Crua/ Mal cozida'],
         'Serviço Positiva': [
           'Funcionários Atenciosos',
           'Reposição Rápida',
@@ -3997,7 +3999,7 @@ class _RatingScreenState extends State<RatingScreen> {
         ],
         'Serviço Negativa': [
           'Atendimento Lento',
-          'Demora na Limpeza',
+          'Falta de Pratos ou Talheres',
           'Filas Grandes',
         ],
         'Ambiente Positiva': [
@@ -4635,7 +4637,7 @@ class CategoryFeedbackColumn extends StatelessWidget {
     appTabsControllerState?._resetTimerOnInteraction();
   }
 
-  // MÉTODO _buildButton RESPONSIVO
+  // MÉTODO _buildButton RESPONSIVO E TRAVADO
   Widget _buildButton({
     required String phrase,
     required Color baseColor,
@@ -4643,12 +4645,10 @@ class CategoryFeedbackColumn extends StatelessWidget {
     required bool isSelected,
     required VoidCallback onTap,
   }) {
-    // DETECÇÃO DE TAMANHO
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 360;
     final isLargeScreen = screenWidth > 600;
 
-    // Variáveis de cor e estado
     final bool isGreen = baseColor == Colors.green;
     final Color selectedColor = isGreen
         ? Colors.green.shade700
@@ -4659,21 +4659,32 @@ class CategoryFeedbackColumn extends StatelessWidget {
         : Colors.red.shade700;
     final Color unselectedTextColor = Colors.black87;
 
-    // QUEBRA DE LINHA RESPONSIVA
     String formattedPhrase = phrase;
-    int firstSpaceIndex = phrase.indexOf(' ');
+    List<String> words = phrase.split(' ');
 
-    if (firstSpaceIndex != -1) {
-      formattedPhrase =
-          phrase.substring(0, firstSpaceIndex) +
-          '\n' +
-          phrase.substring(firstSpaceIndex + 1);
+    // QUEBRA DE LINHA PARA CADA FRASE ESPECÍFICA
+    if (phrase == 'Falta de Pratos ou Talheres') {
+      formattedPhrase = 'Falta de\nPratos ou Talheres';
+    } else if (phrase == 'Sem Sal') {
+      formattedPhrase = 'Sem\nSal';
+    } else if (phrase == 'Crua/ Mal cozida') {
+      formattedPhrase = 'Crua/\nMal cozida';
+    } else if (phrase == 'Demora na Limpeza') {
+      formattedPhrase = 'Demora na\nLimpeza';
+    } else if (words.length == 2) {
+      // Mantém a quebra perfeita no meio para frases de 2 palavras (ex: "Comida Fria")
+      formattedPhrase = '${words[0]}\n${words[1]}';
     }
 
+    // if (firstSpaceIndex != -1) {
+    //   formattedPhrase =
+    //       phrase.substring(0, firstSpaceIndex) +
+    //       '\n' +
+    //       phrase.substring(firstSpaceIndex + 1);
+    // }
+
     return Padding(
-      padding: EdgeInsets.only(
-        bottom: screenWidth * 0.02,
-      ), // ESPAÇAMENTO RESPONSIVO
+      padding: EdgeInsets.only(bottom: screenWidth * 0.02),
       child: GestureDetector(
         onTap: () {
           _resetParentTimer(context); // REINICIA TIMER
@@ -4681,6 +4692,10 @@ class CategoryFeedbackColumn extends StatelessWidget {
         },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
+
+          // 1. MUDANÇA: Altura Exata (height) em vez de Mínima (minHeight)
+          height: isSmallScreen ? 70.0 : (isLargeScreen ? 95.0 : 85.0),
+
           decoration: BoxDecoration(
             color: isSelected ? selectedColor : unselectedColor,
             borderRadius: BorderRadius.circular(8),
@@ -4689,20 +4704,23 @@ class CategoryFeedbackColumn extends StatelessWidget {
               width: isSelected ? 2.0 : 1.0,
             ),
           ),
-          // PADDING RESPONSIVO
-          padding: EdgeInsets.symmetric(
-            horizontal: screenWidth * 0.03,
-            vertical: isSmallScreen ? 8 : (isLargeScreen ? 12 : 10),
-          ),
+
+          // 2. MUDANÇA: Reduzi o padding horizontal para o texto respirar
+          padding: const EdgeInsets.symmetric(horizontal: 4.0),
           alignment: Alignment.center,
-          child: Text(
-            formattedPhrase,
-            textAlign: TextAlign.center,
-            // TEXTO RESPONSIVO
-            style: TextStyle(
-              fontSize: isSmallScreen ? 14 : (isLargeScreen ? 17 : 16),
-              color: isSelected ? Colors.white : unselectedTextColor,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+
+          // 3. MUDANÇA: FittedBox impede que o texto quebre o layout
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              formattedPhrase,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: isSmallScreen ? 13 : (isLargeScreen ? 16 : 15),
+                color: isSelected ? Colors.white : unselectedTextColor,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                height: 1.15, // Aproxima as linhas de texto para caber melhor
+              ),
             ),
           ),
         ),
