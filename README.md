@@ -115,7 +115,7 @@ Remove-Item -Recurse -Force android/app/src/main/res/drawable-*
 flutter clean
 flutter pub get
 flutter pub run flutter_launcher_icons
-
+```
 ## Gerar APK do aplicativo
 Copie o seguinte grupo de comandos para o terminal dentro do diretório do projeto (ex no terminal do próprio VS Code):
 ```
