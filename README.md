@@ -1,11 +1,77 @@
-# Aplicativo *Costa Feedbacks*
+
 Olá! Sou Frederico Cabral Uchôa e este é o meu projeto de estágio! Ele consiste em um aplicativo para avaliação do serviço prestado pelo restaurante interno da empresa Costa Foods Brasil. 
 
-A aplicação é desenvolvida através do kit de desenvolvimento de software _**Flutter**_.
+# Aplicativo *Costa Foods Brasil Feedbacks*
+
+A aplicação é desenvolvida através do kit de desenvolvimento de software _**Flutter**_. O objetivo é coletar avaliações de colaboradores sobre o Restaurante ou a Ambientação da Empresa usando totens/tablets em modo Kiosk.
 
 <img width="251.23621" height="400" alt="image" src="https://github.com/user-attachments/assets/63db5bd2-9ef2-4652-8d3f-74cd8944de87" />
 <img width="250.803826" height="400" alt="image" src="https://github.com/user-attachments/assets/8069480a-325e-4e8f-9f5f-ad6abf3b73b3" />
 <img width="250.752728" height="400" alt="image" src="https://github.com/user-attachments/assets/6d209da6-e8a5-4e49-abd3-c5bca260d70f" />
+
+---
+
+## 1. Visão Geral e Regras de Negócio
+
+A aplicação possui dois modos principais de operação:
+* **Modo 1 (Restaurante):** Focado em avaliar *Refeição*, *Serviço* e *Ambiente*. Trabalha de forma inteligente com 5 turnos dinâmicos baseados no relógio do tablet (Café da Manhã, Almoço, Café da Tarde, Jantar e Ceia).
+* **Modo 2 (Ambientação da Empresa):** Focado em avaliar *Acolhimento*, *Organização* e *Conteúdo*. O turno é classificado de forma fixa como "Ambientação".
+
+**Regra das Avaliações:**
+* **Avaliações Positivas (4 e 5) ou Neutras (3):** Podem ser enviadas diretamente.
+* **Avaliações Negativas (1 e 2):** Exigem, obrigatoriamente, que o usuário selecione um botão de motivo (detalhe do problema) ou digite um comentário antes de habilitar o botão de envio.
+
+---
+
+## 2. Arquitetura Técnica e Tecnologias
+
+* **Linguagem / Framework:** Dart & Flutter.
+* **Gerenciamento de Estado:** `Provider` (A classe principal `AppData` controla todas as lógicas de negócio e estado em tempo real).
+* **Armazenamento Seguro (Offline-first):**
+  * **Cofre Interno:** O app usa `SharedPreferences` para manter cópias invisíveis dos dados e evitar perda de histórico caso o aparelho fique offline ou o arquivo físico seja apagado.
+  * **Backup Físico:** Arquivos `.csv` salvos diretamente na pasta *Downloads* do Android via sistema customizado (`file_helper.dart`).
+* **Kiosk Mode e Segurança:**
+  * Utiliza o pacote `wakelock_plus` para impedir que o tablet desligue a tela.
+  * Integração nativa via `MethodChannel('com.costafoods.app/kiosk')` para acionar o *Modo Imersivo*, bloqueando botões de navegação do Android (Home, Voltar e Recentes).
+* **Integração com Servidor Local:** Realiza requisições HTTP (`POST`) em rede local enviando o backup em formato *JSON* e *Multipart File* (CSV) para um servidor Python (`http://10.1.32.181:5000/`).
+
+---
+
+## 3. Dicionário de Dados e Estrutura do CSV
+
+Para garantir que o servidor Python ou Excel não sofra erros de leitura, a nomenclatura do arquivo gerado e exportado dinamicamente possui formatação limpa (ex: `avaliacoes_restaurante_matriz_administrativo.csv`). 
+
+A estrutura fixa de colunas do relatório gerado é a seguinte:
+
+| # | Coluna | Descrição |
+|---|---|---|
+| 1 | **Unidade** | Unidade avaliada com a variação do uniforme se houver (Ex: *Matriz - Branco*). |
+| 2 | **Data/Hora** | Timestamp no formato ISO 8601. |
+| 3 | **Turno** | Refeição detectada (Ex: *Almoço*, *Café da Manhã* ou *Ambientação*). |
+| 4 | **Avaliação** | Valor numérico (1 a 5 estrelas). |
+| 5 | **Categoria** | Texto da avaliação (*Excelente, Bom, Neutro, Ruim, Péssimo*). |
+| 6 | **Status de Satisfação** | Consolidação em *Satisfeito*, *Neutro* ou *Insatisfeito*. |
+| 7 | **refeição_positivo** | Detalhe positivo (Muda para *acolhimento_positivo* no Modo 2). |
+| 8 | **refeição_negativo** | Detalhe negativo (Muda para *acolhimento_negativo* no Modo 2). |
+| 9 | **serviço_positivo** | Detalhe positivo (Muda para *organizacao_positivo* no Modo 2). |
+| 10| **serviço_negativo** | Detalhe negativo (Muda para *organizacao_negativo* no Modo 2). |
+| 11| **ambiente_positivo** | Detalhe positivo (Muda para *conteudo_positivo* no Modo 2). |
+| 12| **ambiente_negativo** | Detalhe negativo (Muda para *conteudo_negativo* no Modo 2). |
+| 13| **Comentário** | Texto livre digitado pelo usuário (opcional na maioria dos casos). |
+
+---
+
+## 4. Retrocompatibilidade (Aviso de Dados Legados)
+
+A interface de avaliações sofreu atualizações de nomenclatura. Para garantir que o histórico antigo não desapareça das estatísticas e da geração de CSV, o dicionário interno do aplicativo faz mapeamentos duplos.
+
+**Mapeamentos Antigos Mantidos no Parse:**
+* O gerador de relatórios entende tanto o texto novo `"Refeição quente"` quanto o antigo `"Comida Quente"`.
+* O gerador de relatórios entende tanto o texto novo `"Refeição fria"` quanto o antigo `"Comida Fria"`.
+
+*Por favor, não remova os termos antigos da classe `AppData` (método `getRestaurantPhrases`), sob o risco de corromper a leitura do banco de dados antigo contido nos tablets.*
+
+---
 
 ## Como rodá-lo para futuras modificações
 - Baixe no computador os programas Visual Studio Code e Android Studio;
@@ -17,32 +83,39 @@ A aplicação é desenvolvida através do kit de desenvolvimento de software _**
 - Abra o terminal (no VS Code ou no sistema) e execute: ```flutter doctor```;
 - Aceite as Licenças do Android (se o flutter doctor indicar que faltam as licenças, execute: ```flutter doctor --android-licenses```. Aceite os termos digitando 'y' quando solicitado;
 - No VS Code, abra a pasta raiz do projeto que foi baixado;
-- Abra o terminal do VS Code (Ctrl+Shift+') e execute o comando para instalar todos os pacotes listados no arquivo ```pubspec.yaml```: ```flutter pub get```;
+- Abra o terminal do VS Code (Ctrl+Shift+') e execute o comando para instalar todos os pacotes listados no arquivo ```pubspec.yaml
+```: ```flutter pub get```;
 - Com o emulador rodando e selecionado na barra de status do VS Code, pressione F5 (ou vá em Run > Start Debugging) para compilar e rodar o aplicativo no dispositivo virtual.
-## Código principal
+
+### Código principal
 ```lib/main.dart```
 
-## Dependências
+### Dependências
 ```pubspec.yaml```
 
+---
+
 # Informações úteis
-## Acessar CSV 
-### Pelo PC 
-No Android Studio, vá em ```View/Tools/Device Explorer``` e depois em ```data/data/com.example.app_restaurante/app_flutter/avaliacoes_registros.csv```.
+
+## Acessar CSV (Backup Automático)
+O aplicativo agora salva backups diretamente na pasta pública do dispositivo.
+### Pelo PC (Device Explorer)
+No Android Studio, vá em ```View/Tools/Device Explorer``` e navegue até 
+```/storage/emulated/0/Download/```. Você encontrará os arquivos ```feedbacks_costafoods_1.csv``` (Restaurante) ou ```feedbacks_costafoods_2.csv``` (Ambientação).
 ### Por dispositivo mobile
-Vá até o diretório ```data/data/com.example.app_restaurante/app_flutter/avaliacoes_registros.csv```.
+Basta abrir o aplicativo "Meus Arquivos" ou "Gerenciador de Arquivos" do Android e ir na pasta **Downloads**.
 
 ## Passos ao adicionar ícone novo
-- Adicione uma imagem com o fone ```costa_foods_feedbacks.png``` nas pastas ```assets/icon``` e  ```assets/images``` (caso queira a mesma imagem de fundo e de ícone do aplicativo);
+- Adicione uma imagem com o nome ```costa_foods_feedbacks.png``` nas pastas ```assets/icon``` e  ```assets/images``` (caso queira a mesma imagem de fundo e de ícone do aplicativo);
 - Feche o aplicativo se estiver rodando no emulador;
-- Copie o grupo de comandos abaixo para o terminal dentro do diretório do projeto (ex: no terminal do próprio VS Code) e nsira **A** (ou **a**) quando aparecer uma pergunta.
-```
+- Copie o grupo de comandos abaixo para o terminal dentro do diretório do projeto (ex: no terminal do próprio VS Code) e insira **A** (ou **a**) quando aparecer uma pergunta.
+```bash
 Remove-Item  android/app/src/main/res/mipmap-*
 Remove-Item -Recurse -Force android/app/src/main/res/drawable-*
 flutter clean
 flutter pub get
 flutter pub run flutter_launcher_icons
-```
+
 ## Gerar APK do aplicativo
 Copie o seguinte grupo de comandos para o terminal dentro do diretório do projeto (ex no terminal do próprio VS Code):
 ```
