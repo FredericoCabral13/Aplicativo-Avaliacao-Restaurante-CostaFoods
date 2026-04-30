@@ -33,7 +33,7 @@ A aplicação possui dois modos principais de operação:
 * **Kiosk Mode e Segurança:**
   * Utiliza o pacote `wakelock_plus` para impedir que o tablet desligue a tela.
   * Integração nativa via `MethodChannel('com.costafoods.app/kiosk')` para acionar o *Modo Imersivo*, bloqueando botões de navegação do Android (Home, Voltar e Recentes).
-* **Integração com Servidor Local:** Realiza requisições HTTP (`POST`) em rede local enviando o backup em formato *JSON* e *Multipart File* (CSV) para um servidor Python (`http://10.1.32.181:5000/`).
+* **Integração com Servidor Local:** Realiza requisições HTTP (`POST`) em rede local enviando o backup em formato *JSON* e *Multipart File* (CSV) para o servidor, em Python, do *Costa Foods Planning* (`http://10.1.32.181:5000/`).
 
 ---
 
@@ -61,7 +61,17 @@ A estrutura fixa de colunas do relatório gerado é a seguinte:
 
 ---
 
-## 4. Retrocompatibilidade (Aviso de Dados Legados)
+## 4. Acesso ao Aplicativo
+
+Ele atualmente se encontra na Google Play Store, porém está no período de Teste Interno. Dessa forma, só pode ser baixado naqueles dispositivos que contenham algum e-mail do Gmail cadastrado previamente por mim no Google Play Console. 
+
+Portanto, caso o e-mail vinculado ao seu dispositivo ainda não tenha permissão para baixá-lo, envie-o para mim, para meu e-mail frederico.uchoa@avivar.com.br — ou fcabral254@gmail.com — que o cadastro na plataforma. 
+
+Com o seu acesso liberado, entre no link para baixá-lo na na Google Play (devido ele ainda não está disponível para a visualização pública na loja por estar no período de testes): https://play.google.com/apps/internaltest/4700239093349532737.
+
+---
+
+## 5. Retrocompatibilidade (Aviso de Dados Legados)
 
 A interface de avaliações sofreu atualizações de nomenclatura. Para garantir que o histórico antigo não desapareça das estatísticas e da geração de CSV, o dicionário interno do aplicativo faz mapeamentos duplos.
 
