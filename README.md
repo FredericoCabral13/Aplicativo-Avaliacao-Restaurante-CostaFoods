@@ -65,7 +65,7 @@ A estrutura fixa de colunas do relatório gerado é a seguinte:
 
 Ele atualmente se encontra na Google Play Store, porém está no período de Teste Interno. Dessa forma, só pode ser baixado naqueles dispositivos que contenham algum e-mail do Gmail cadastrado previamente por mim no Google Play Console. 
 
-Portanto, caso o e-mail vinculado ao seu dispositivo ainda não tenha permissão para baixá-lo, envie-o para mim, para meu e-mail frederico.uchoa@avivar.com.br — ou fcabral254@gmail.com — que o cadastro na plataforma. 
+Portanto, caso o e-mail vinculado ao seu dispositivo ainda não tenha permissão para baixá-lo, envie-o para mim, para meu e-mail: frederico.uchoa@avivar.com.br (ou fcabral254@gmail.com), que o cadastro na plataforma. 
 
 Com o seu acesso liberado, entre no link para baixá-lo na na Google Play (devido ele ainda não está disponível para a visualização pública na loja por estar no período de testes): https://play.google.com/apps/internaltest/4700239093349532737.
 
