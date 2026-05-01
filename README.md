@@ -5,9 +5,12 @@ Olá! Sou Frederico Cabral Uchôa e este é o meu projeto de estágio! Ele consi
 
 A aplicação é desenvolvida através do kit de desenvolvimento de software _**Flutter**_. O objetivo é coletar avaliações de colaboradores sobre o Restaurante ou a Ambientação da Empresa usando totens/tablets em modo Kiosk.
 
-<img width="251.23621" height="400" alt="image" src="https://github.com/user-attachments/assets/63db5bd2-9ef2-4652-8d3f-74cd8944de87" />
-<img width="250.803826" height="400" alt="image" src="https://github.com/user-attachments/assets/8069480a-325e-4e8f-9f5f-ad6abf3b73b3" />
-<img width="250.752728" height="400" alt="image" src="https://github.com/user-attachments/assets/6d209da6-e8a5-4e49-abd3-c5bca260d70f" />
+<div>
+<img src="https://github.com/user-attachments/assets/ec11c468-93de-4d40-994d-09fb0538918e" width="23%" />
+<img src="https://github.com/user-attachments/assets/47066966-c4f1-4ab9-82b2-7e931813b76b" width="23%" />
+<img src="https://github.com/user-attachments/assets/120e0f0b-ff44-433a-853a-f13c254fb13c" width="23%" />
+<img src="https://github.com/user-attachments/assets/672cbdb9-2e85-4956-873e-f5004d634b6a" width="23%" />
+</div>
 
 ---
 
