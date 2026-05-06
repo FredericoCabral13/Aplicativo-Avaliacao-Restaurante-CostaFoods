@@ -3086,7 +3086,7 @@ class _AppTabsControllerState extends State<AppTabsController>
 
   // Timer para voltar à tela inicial após inatividade
   Timer? _inactivityTimer;
-  final Duration _inactivityDuration = const Duration(seconds: 20);
+  final Duration _inactivityDuration = const Duration(seconds: 45);
 
   // TIMER ESPECÍFICO PARA O TECLADO NUMÉRICO
   Timer? _keyboardInactivityTimer;
@@ -3968,8 +3968,8 @@ class _RatingScreenState extends State<RatingScreen> {
 
   // 1. VARIÁVEIS DO TEMPORIZADOR VISUAL
   Timer? _visualTimer;
-  static const int _timeoutSeconds = 10; // Tempo total em segundos
-  int _remainingSeconds = _timeoutSeconds;
+  late int _timeoutSeconds; // Timer de espera na tela de feedbacks para voltar para a tela inicial
+  late int _remainingSeconds;
   bool _isResettingFromOutside = false; // CONTROLE PARA EVITAR LOOP
 
   // FRASES DE RESTAURANTE
@@ -4066,6 +4066,12 @@ class _RatingScreenState extends State<RatingScreen> {
   void initState() {
     super.initState();
     _startVisualTimer();
+
+    // Verifica a funcionalidade escolhida para setar o timer de espera
+    final appData = Provider.of<AppData>(context, listen: false);
+    // 10 segundos para Restaurante (1), 20 segundos para Ambientação (2)
+    _timeoutSeconds = appData.appFunctionality == 1 ? 10 : 20;
+    _remainingSeconds = _timeoutSeconds;
 
     // INICIA O TIMER QUANDO A TELA DE FEEDBACKS É ABERTA
     WidgetsBinding.instance.addPostFrameCallback((_) {
