@@ -3968,9 +3968,12 @@ class _RatingScreenState extends State<RatingScreen> {
 
   // 1. VARIÁVEIS DO TEMPORIZADOR VISUAL
   Timer? _visualTimer;
-  late int _timeoutSeconds; // Timer de espera na tela de feedbacks para voltar para a tela inicial
+  late int
+  _timeoutSeconds; // Timer de espera na tela de feedbacks para voltar para a tela inicial
   late int _remainingSeconds;
   bool _isResettingFromOutside = false; // CONTROLE PARA EVITAR LOOP
+
+  bool _isSending = false; // CRIAÇÃO DA TRAVA PARA O BOTÃO ENVIAR
 
   // FRASES DE RESTAURANTE
   Map<String, List<String>> _getRestaurantPhrases(int shift) {
@@ -4234,6 +4237,9 @@ class _RatingScreenState extends State<RatingScreen> {
   }
 
   void _sendRating(BuildContext context) {
+    if (_isSending)
+      return; // SE JÁ FOI CLICADO EM ENVIAR, IGNORA CLIQUES DUPLOS
+
     if (_selectedStars == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -4275,6 +4281,11 @@ class _RatingScreenState extends State<RatingScreen> {
       }
     }
 
+    // ATIVA A TRAVA ANTES DE COMEÇAR A SALVAR O CSV PESADO
+    setState(() {
+      _isSending = true;
+    });
+
     // --- Se passou pela validação, continua o processo normal de envio ---
 
     // Atualiza o último registro (que foi criado na tela anterior)
@@ -4302,6 +4313,7 @@ class _RatingScreenState extends State<RatingScreen> {
       _selectedStars = 0;
       _pendingDetailedPhrases.clear();
       _commentController.clear();
+      _isSending = false;
     });
 
     // Volta para a home
@@ -4464,7 +4476,8 @@ class _RatingScreenState extends State<RatingScreen> {
                   padding: EdgeInsets.all(screenWidth * 0.04),
                   child: ElevatedButton(
                     // SE isButtonEnabled for falso, passamos 'null', o que desabilita o botão nativamente
-                    onPressed: isButtonEnabled
+                    // AGORA ELE SÓ FICA HABILITADO SE TIVER CONTEÚDO E NÃO ESTIVER ENVIANDO
+                    onPressed: (isButtonEnabled && !_isSending)
                         ? () => _sendRating(context)
                         : null,
 
@@ -5883,6 +5896,7 @@ class RatingSelectionScreen extends StatefulWidget {
 
 class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
   int _selectedStars = 0;
+  bool _isProcessing = false; // TRAVA DE SEGURANÇA
 
   // EMOJIS NA ORDEM CORRETA PARA A NOVA SEQUÊNCIA
   final List<String> _ratingImagePaths = [
@@ -5901,7 +5915,11 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
 
   // MANIPULADOR DE CLIQUE NOS EMOJIS
   void _handleEmojiClick(int star) {
+    // SE JÁ ESTIVER PROCESSANDO, IGNORA QUALQUER OUTRO CLIQUE
+    if (_isProcessing) return;
+
     setState(() {
+      _isProcessing = true; // ATIVA A TRAVA
       _selectedStars = star;
     });
 
@@ -5978,6 +5996,12 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
         star,
         initialTab,
       ); // Navega para a tela de detalhes
+      // DESTRAVA PARA O PRÓXIMO USUÁRIO QUANDO A TELA SUMIR
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+      }
     });
   }
 
