@@ -554,28 +554,24 @@ class AppData extends ChangeNotifier {
     // 1. Converte tudo para minúsculo
     String normalizedComment = comment.toLowerCase();
 
-    // 2. TRADUTOR DE SÍMBOLOS/NÚMEROS (Anti-Drible)
-    // O usuário digita "put4" ou "tes@o", o app lê "puta" e "tesao"
+    // 2. TRADUTOR DE SÍMBOLOS/NÚMEROS (Anti-Drible 1)
     normalizedComment = normalizedComment
-        // --- SÍMBOLOS DUPLOS/TRIPLOS DA TABELA ---
-        .replaceAll(r'\/', 'v') // Troca \/ por v
-        .replaceAll('><', 'x') // Troca >< por x
-        .replaceAll(r'|3', 'b') // Troca |3 por b
-        .replaceAll('()', 'o') // Troca () por o
-        .replaceAll('[]', 'o') // Troca [] por o
-        // --- SÍMBOLOS ÚNICOS DA TABELA ---
-        // A contrabarra (\) é usada antes de símbolos especiais do Regex como ^, [ e +
-        .replaceAll(RegExp(r'[@4\^]'), 'a') // Troca @, 4 ou ^ por 'a'
-        .replaceAll(RegExp(r'[8ß]'), 'b') // Troca 8 ou ß por 'b'
-        .replaceAll(RegExp(r'[¢<\[]'), 'c') // Troca ¢, < ou [ por 'c'
-        .replaceAll(RegExp(r'[3£€]'), 'e') // Troca 3, £ ou € por 'e'
-        .replaceAll(RegExp(r'[1!|]'), 'i') // Troca 1, ! ou | por 'i'
-        .replaceAll(RegExp(r'[0*]'), 'o') // Troca 0 ou * por 'o'
-        .replaceAll(RegExp(r'[5$§]'), 's') // Troca 5, $ ou § por 's'
-        .replaceAll(RegExp(r'[7\+]'), 't') // Troca 7 ou + por 't'
-        .replaceAll(RegExp(r'[2%]'), 'z'); // Troca 2 ou % por 'z'
+        .replaceAll(r'\/', 'v')
+        .replaceAll('><', 'x')
+        .replaceAll(r'|3', 'b')
+        .replaceAll('()', 'o')
+        .replaceAll('[]', 'o')
+        .replaceAll(RegExp(r'[@4\^]'), 'a')
+        .replaceAll(RegExp(r'[8ß]'), 'b')
+        .replaceAll(RegExp(r'[¢<\[]'), 'c')
+        .replaceAll(RegExp(r'[3£€]'), 'e')
+        .replaceAll(RegExp(r'[1!|]'), 'i')
+        .replaceAll(RegExp(r'[0*]'), 'o')
+        .replaceAll(RegExp(r'[5$§]'), 's')
+        .replaceAll(RegExp(r'[7\+]'), 't')
+        .replaceAll(RegExp(r'[2%]'), 'z');
 
-    // 3. Remove acentos convencionais (Anti-Drible 2)
+    // 3. REMOVEDOR DE ACENTOS (Anti-Drible 2)
     normalizedComment = normalizedComment
         .replaceAll(RegExp(r'[áàãâä]'), 'a')
         .replaceAll(RegExp(r'[éèêë]'), 'e')
@@ -584,13 +580,32 @@ class AppData extends ChangeNotifier {
         .replaceAll(RegExp(r'[úùûü]'), 'u')
         .replaceAll(RegExp(r'[ç]'), 'c');
 
-    // 4. Busca pelas palavras exatas
+    // ==========================================================
+    // 4. COLAPSO DE PONTUAÇÃO (Anti-Drible 3 - NOVO)
+    // Remove tudo que NÃO for letra de "a" a "z" ou espaço (\s).
+    // O que for ponto, traço, underline, etc., vira vazio.
+    // Ex: "p.u.t.a", "c_a_r_a_i" ou "b#o#s#t#a" viram letras limpas
+    // ==========================================================
+    normalizedComment = normalizedComment.replaceAll(RegExp(r'[^a-z\s]'), '');
+
+    // ==========================================================
+    // 5. CAÇADOR COM ESPAÇAMENTOS (Anti-Drible 4 - NOVO)
+    // ==========================================================
     for (var word in _badWords) {
-      // O \b significa "fronteira da palavra".
-      // Impede que a palavra legítima "comPUTAdor" seja bloqueada por causa de "puta".
-      final regex = RegExp(r'\b' + word + r'\b');
+      // Limpa a palavra original da nossa lista (tira hifens e espaços)
+      // Ex: "baba-ovo" vira "babaovo", "fi da p" vira "fidap"
+      String cleanWord = word.replaceAll(RegExp(r'[^a-z]'), '');
+      if (cleanWord.isEmpty) continue;
+
+      // Cria um padrão que aceita zero ou infinitos espaços entre CADA letra!
+      // A mágica: A palavra "puta" vira internamente "p\s*u\s*t\s*a"
+      String spacedPattern = cleanWord.split('').join(r'\s*');
+
+      // O \b significa "fronteira da palavra" para não bloquear palavras justas
+      final regex = RegExp(r'\b' + spacedPattern + r'\b');
+
       if (regex.hasMatch(normalizedComment)) {
-        return true;
+        return true; // Bloqueado!
       }
     }
     return false;
