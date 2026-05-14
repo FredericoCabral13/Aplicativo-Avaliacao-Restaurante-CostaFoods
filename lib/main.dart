@@ -133,6 +133,469 @@ class AppData extends ChangeNotifier {
     5: {},
   };
 
+  // ===============================================================
+  // FILTRO DE PALAVRAS INDEVIDAS
+  // ===============================================================
+  final List<String> _badWords = [
+    // --- PALAVRÕES/EXPRESSÕES CHULAS ---
+    'abestado',
+    'abilobado',
+    'abilolado',
+    'abiscoitado',
+    'alesado',
+    'almasebosa',
+    'amancebado',
+    'amarrado',
+    'arigo',
+    'arrombada',
+    'arrombadas',
+    'arrombado',
+    'arrombados',
+    'avacalhar',
+    'avuado',
+    'baba-ovo',
+    'babao',
+    'babaovo',
+    'babaca',
+    'bacurinha',
+    'baitola',
+    'batore',
+    'bexiga',
+    'bexigalixa',
+    'bexiguento',
+    'bicha',
+    'bichona',
+    'bilau',
+    'biscate',
+    'bixa',
+    'bixigalixa',
+    'boceta',
+    'boga',
+    'boiola',
+    'bolcinha',
+    'bolsinha',
+    'boquete',
+    'boqueteira',
+    'boqueteiro',
+    'boquetera',
+    'boquetero',
+    'boquetes',
+    'bosta',
+    'brecheca',
+    'bucefula',
+    'buceta',
+    'bucetao',
+    'bucetas',
+    'bucetasso',
+    'bucetinha',
+    'bucetinhas',
+    'bucetonas',
+    'cacete',
+    'caceteiro',
+    'cachuleta',
+    'cacura',
+    'cafetao',
+    'cafetina',
+    'cagalhao',
+    'cagao',
+    'cagona',
+    'caloteiro',
+    'canalha',
+    'caneco',
+    'carai',
+    'caraio',
+    'caralha',
+    'caralho',
+    'caralhudo',
+    'carnica',
+    'cassete',
+    'catraia',
+    'cavalodocao',
+    'cequelada',
+    'cequelado',
+    'chalerinha',
+    'chapada',
+    'chapado',
+    'chatico',
+    'chavasca',
+    'checheca',
+    'chereca',
+    'chibata',
+    'chibio',
+    'chibungo',
+    'chimbica',
+    'chupada',
+    'chupador',
+    'chupadora',
+    'chupando',
+    'chupeta',
+    'chupetinha',
+    'chupou',
+    'corna',
+    'corno',
+    'cornomanso',
+    'cornudo',
+    'crl',
+    'crossdresser',
+    'cu',
+    'cuecao',
+    'custozinha',
+    'cuzao',
+    'cuzinho',
+    'cuzinhos',
+    'cuzuda',
+    'cuzudo',
+    'dadeira',
+    'desgramado',
+    'desgraca',
+    'desgracada',
+    'desgracado',
+    'disgramado',
+    'drogada',
+    'drogado',
+    'encoxada',
+    'engabelar',
+    'enrabadas',
+    'enxerido',
+    'escrota',
+    'escroto',
+    'esporra',
+    'estupida',
+    'estupido',
+    'fdp',
+    'fela',
+    'feladaputa',
+    'fi da p',
+    'fi de p',
+    'fidabexiga',
+    'fidadesgraca',
+    'fidagota',
+    'fidapeste',
+    'fidaputa',
+    'fidequenga',
+    'fiderapariga',
+    'filadumaegua',
+    'filadaputa',
+    'filhadumaegua',
+    'filho da p',
+    'filho de p',
+    'fiofo',
+    'foda',
+    'foda-se',
+    'foda se',
+    'fodase',
+    'fodao',
+    'foder',
+    'fodeu',
+    'fodida',
+    'fodido',
+    'fornicada',
+    'frouxo',
+    'froxo',
+    'fudendo',
+    'fudeu',
+    'fudida',
+    'fudido',
+    'fuleiro',
+    'fuleragem',
+    'fulero',
+    'fura-olho',
+    'fura olho',
+    'furico',
+    'furustreca',
+    'gabiru',
+    'gostozudas',
+    'gota',
+    'gozada',
+    'gozadas',
+    'grelao',
+    'greludas',
+    'gulosinha',
+    'idiota',
+    'imbecil',
+    'inhaca',
+    'jagunco',
+    'jegue',
+    'jumenta',
+    'jumento',
+    'katchanga',
+    'kct',
+    'kenga',
+    'ladra',
+    'ladrao',
+    'lazarenta',
+    'lazarento',
+    'lesbofetiche',
+    'lixa-pica',
+    'lixo',
+    'macaca',
+    'macaco',
+    'maconha',
+    'maconheira',
+    'maconheiro',
+    'macumbeiro',
+    'macumbeira',
+    'malamanhado',
+    'mamada',
+    'maria-gasolina',
+    'maria gasolina',
+    'marmota',
+    'mede-rola',
+    'mede rola',
+    'megasex',
+    'mela-pentelho',
+    'mela pentelho',
+    'meleca',
+    'melequinha',
+    'menage',
+    'menages',
+    'merda',
+    'merdao',
+    'merdinha',
+    'meretriz',
+    'metendo',
+    'mijada',
+    'misera',
+    'miseravi',
+    'miseria',
+    'mizeravi',
+    'mocorongo',
+    'mundica',
+    'nocego',
+    'nojenta',
+    'nojento',
+    'otario',
+    'paia',
+    'papa-duro',
+    'papa duro',
+    'papeldeenrolarprego',
+    'papel de enrolar prego',
+    'paspalho',
+    'pau',
+    'pau-no-cu',
+    'pau no cu',
+    'paunocu',
+    'pausudas',
+    'pauzudas',
+    'peba',
+    'pechereca',
+    'peidao',
+    'peido',
+    'peidorreiro',
+    'peituda',
+    'peitudas',
+    'penis',
+    'perereca',
+    'periquita',
+    'perronha',
+    'perua',
+    'peste',
+    'pica',
+    'picareta',
+    'pinto',
+    'pirangueiro',
+    'piranhuda',
+    'piriguetes',
+    'piroca',
+    'pirocao',
+    'pirocas',
+    'pirocudo',
+    'pitbitoca',
+    'pitchbicha',
+    'pitchbitoca',
+    'pithbicha',
+    'pithbitoca',
+    'pitibicha',
+    'pitrica',
+    'pixota',
+    'pnc',
+    'poha',
+    'porcaria',
+    'porra',
+    'pqp',
+    'prencheca',
+    'prexeca',
+    'priquita',
+    'priquito',
+    'prostituta',
+    'punheta',
+    'punheteira',
+    'punheteiro',
+    'pussy',
+    'puta',
+    'putaco',
+    'putaria',
+    'putas',
+    'putasso',
+    'putedo',
+    'putinha',
+    'puto',
+    'quenga',
+    'quengal',
+    'rabuda',
+    'rabudas',
+    'rameira',
+    'rapariga',
+    'raparigo',
+    'retardado',
+    'rola',
+    'rolinha',
+    'rosca',
+    'saca-rola',
+    'safada',
+    'safadas',
+    'safadeza',
+    'safado',
+    'safados',
+    'selascar',
+    'sapatao',
+    'sebosa',
+    'seboso',
+    'semvergonhagem',
+    'semvergonhice',
+    'sequelada',
+    'sexboys',
+    'sexgatas',
+    'se lascar',
+    'sirica',
+    'sirigaita',
+    'siririca',
+    'sotravesti',
+    'suruba',
+    'surubas',
+    'tabaca',
+    'tabacudo',
+    'taioba',
+    'tara',
+    'tarada',
+    'tarado',
+    'tchaca',
+    'tcheca',
+    'tchonga',
+    'tchuchuca',
+    'tchutchuca',
+    'tesao',
+    'tesuda',
+    'tesudas',
+    'tesudo',
+    'tetinha',
+    'tezao',
+    'tezuda',
+    'tezudo',
+    'tgatas',
+    't-girls',
+    'tmnc',
+    'tobinha',
+    'tomanocu',
+    'tomarnocu',
+    'tomba-macho',
+    'topsexy',
+    'transa',
+    'transando',
+    'traquino',
+    'travecas',
+    'traveco',
+    'travecos',
+    'trepada',
+    'trepadas',
+    'trouxa',
+    'troxa',
+    'vaca',
+    'vacilao',
+    'vadia',
+    'vadiagem',
+    'vadjaina',
+    'vagabundo',
+    'vagabunda',
+    'vagabundagem',
+    'vagabundo',
+    'vaginismo',
+    'vajoca',
+    'veado',
+    'veiaca',
+    'veiaco',
+    'viadagem',
+    'viadinho',
+    'viado',
+    'vsf',
+    'vtnc',
+    'xabasca',
+    'xana',
+    'xaninha',
+    'xatico',
+    'xavasca',
+    'xebreca',
+    'xereca',
+    'xexeiro',
+    'xexeca',
+    'xibio',
+    'xibiu',
+    'xibungo',
+    'xochota',
+    'xoroca',
+    'xota',
+    'xotinha',
+    'xoxota',
+    'xoxotas',
+    'xoxotinha',
+    'xulipa',
+    'xumbrega',
+    'xupaxota',
+    'xupeta',
+    'xupetinha',
+    'zambeta',
+    'zarolho',
+    'zoneira',
+  ];
+
+  bool containsBadWords(String comment) {
+    if (comment.trim().isEmpty) return false;
+
+    // 1. Converte tudo para minúsculo
+    String normalizedComment = comment.toLowerCase();
+
+    // 2. TRADUTOR DE SÍMBOLOS/NÚMEROS (Anti-Drible)
+    // O usuário digita "put4" ou "tes@o", o app lê "puta" e "tesao"
+    normalizedComment = normalizedComment
+        // --- SÍMBOLOS DUPLOS/TRIPLOS DA TABELA ---
+        .replaceAll(r'\/', 'v') // Troca \/ por v
+        .replaceAll('><', 'x') // Troca >< por x
+        .replaceAll(r'|3', 'b') // Troca |3 por b
+        .replaceAll('()', 'o') // Troca () por o
+        .replaceAll('[]', 'o') // Troca [] por o
+        // --- SÍMBOLOS ÚNICOS DA TABELA ---
+        // A contrabarra (\) é usada antes de símbolos especiais do Regex como ^, [ e +
+        .replaceAll(RegExp(r'[@4\^]'), 'a') // Troca @, 4 ou ^ por 'a'
+        .replaceAll(RegExp(r'[8ß]'), 'b') // Troca 8 ou ß por 'b'
+        .replaceAll(RegExp(r'[¢<\[]'), 'c') // Troca ¢, < ou [ por 'c'
+        .replaceAll(RegExp(r'[3£€]'), 'e') // Troca 3, £ ou € por 'e'
+        .replaceAll(RegExp(r'[1!|]'), 'i') // Troca 1, ! ou | por 'i'
+        .replaceAll(RegExp(r'[0*]'), 'o') // Troca 0 ou * por 'o'
+        .replaceAll(RegExp(r'[5$§]'), 's') // Troca 5, $ ou § por 's'
+        .replaceAll(RegExp(r'[7\+]'), 't') // Troca 7 ou + por 't'
+        .replaceAll(RegExp(r'[2%]'), 'z'); // Troca 2 ou % por 'z'
+
+    // 3. Remove acentos convencionais (Anti-Drible 2)
+    normalizedComment = normalizedComment
+        .replaceAll(RegExp(r'[áàãâä]'), 'a')
+        .replaceAll(RegExp(r'[éèêë]'), 'e')
+        .replaceAll(RegExp(r'[íìîï]'), 'i')
+        .replaceAll(RegExp(r'[óòõôö]'), 'o')
+        .replaceAll(RegExp(r'[úùûü]'), 'u')
+        .replaceAll(RegExp(r'[ç]'), 'c');
+
+    // 4. Busca pelas palavras exatas
+    for (var word in _badWords) {
+      // O \b significa "fronteira da palavra".
+      // Impede que a palavra legítima "comPUTAdor" seja bloqueada por causa de "puta".
+      final regex = RegExp(r'\b' + word + r'\b');
+      if (regex.hasMatch(normalizedComment)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   // MAPA DE RESTAURANTE
   final Map<String, bool> _restaurantSentiment = const {
     // REFEIÇÃO - ALMOÇO/JANTAR/CEIA
@@ -426,11 +889,27 @@ class AppData extends ChangeNotifier {
     }
   }
 
+  int? _customTimeout;
+
+  // Getter que prioriza o tempo personalizado, se existir
+  int get timeoutSeconds {
+    if (_customTimeout != null) return _customTimeout!;
+    return appFunctionality == 2 ? 20 : 10; // Padrão original
+  }
+
+  // Método para salvar o novo tempo
+  Future<void> setCustomTimeout(int seconds) async {
+    _customTimeout = seconds;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('custom_timeout_${appFunctionality}', seconds);
+    notifyListeners();
+  }
+
   // VERIFICA SE É A PRIMEIRA VEZ QUE ABRE O APP
-  // VERIFICA SE É A PRIMEIRA VEZ QUE ABRE O APP (ATUALIZADO)
   Future<void> _checkFirstTimeOpen() async {
     final prefs = await SharedPreferences.getInstance();
     final bool isFirstTime = prefs.getBool('is_first_time') ?? true;
+    _customTimeout = prefs.getInt('custom_timeout_${_appFunctionality}');
 
     if (isFirstTime) {
       // É a primeira vez - mostra seletor de unidade
@@ -446,6 +925,7 @@ class AppData extends ChangeNotifier {
       _appFunctionality = prefs.getInt(
         'app_functionality',
       ); // Carrega a funcionalidade
+      _customTimeout = prefs.getInt('custom_timeout_${_appFunctionality}');
       _showUnitSelection = false;
       _showUniformSelection = false;
 
@@ -581,6 +1061,9 @@ class AppData extends ChangeNotifier {
     // IGNORA A TELA E CALCULA O TURNO EXATO
     final int turnoExato = getLiveShift();
 
+    // Verifica se tem palavra indevida
+    final bool isIndevido = containsBadWords(comment ?? '');
+
     final newRecord = {
       'timestamp': timestamp,
       'turno': shift,
@@ -591,6 +1074,7 @@ class AppData extends ChangeNotifier {
       'comentario': comment ?? '',
       'satisfacao': satisfacao,
       'unidade_csv': unidadeCSV,
+      'comentario_indevido': isIndevido ? '1' : '', // Adicionado ao JSON
     };
 
     allEvaluationRecords.add(newRecord);
@@ -627,6 +1111,10 @@ class AppData extends ChangeNotifier {
     lastRecord['positivos'] = positiveFeedbacks.join('; ');
     lastRecord['negativos'] = negativeFeedbacks.join('; ');
     lastRecord['comentario'] = comment ?? '';
+
+    // Atualiza a flag caso o usuário digite a ofensa nesta tela
+    final bool isIndevido = containsBadWords(comment ?? '');
+    lastRecord['comentario_indevido'] = isIndevido ? '1' : '';
 
     // Atualiza a lista na memória
     allEvaluationRecords[lastIndex] = lastRecord;
@@ -845,6 +1333,8 @@ class AppData extends ChangeNotifier {
         String negativos = negList.where((p) => p.trim().isNotEmpty).join('; ');
 
         String comentario = row.length >= 13 ? row[12].toString() : '';
+        // Lê a coluna 14 se existir
+        String comentarioIndevido = row.length >= 14 ? row[13].toString() : '';
 
         Map<String, dynamic> record = {
           'unidade_csv': row[0].toString(),
@@ -855,6 +1345,7 @@ class AppData extends ChangeNotifier {
           'positivos': positivos,
           'negativos': negativos,
           'comentario': comentario,
+          'comentario_indevido': comentarioIndevido,
         };
 
         allEvaluationRecords.add(record);
@@ -1252,6 +1743,7 @@ class AppData extends ChangeNotifier {
         'ambiente_positivo',
         'ambiente_negativo',
         'Comentário',
+        'Comentário Indevido',
       ]);
     } else {
       csvData.add([
@@ -1268,6 +1760,7 @@ class AppData extends ChangeNotifier {
         'conteudo_positivo',
         'conteudo_negativo',
         'Comentário',
+        'Comentário Indevido',
       ]);
     }
 
@@ -1387,6 +1880,7 @@ class AppData extends ChangeNotifier {
         ambPos,
         ambNeg,
         record['comentario'] ?? '',
+        record['comentario_indevido'] ?? '',
       ]);
     }
 
@@ -1859,6 +2353,7 @@ Arquivo contém dados completos das avaliações dos clientes.
         'ambiente_positivo',
         'ambiente_negativo',
         'Comentário',
+        'Comentário Indevido',
       ]);
     } else {
       csvData.add([
@@ -1875,6 +2370,7 @@ Arquivo contém dados completos das avaliações dos clientes.
         'conteudo_positivo',
         'conteudo_negativo',
         'Comentário',
+        'Comentário Indevido',
       ]);
     }
 
@@ -1969,6 +2465,7 @@ Arquivo contém dados completos das avaliações dos clientes.
         ambPos,
         ambNeg,
         record['comentario'] ?? '',
+        record['comentario_indevido'] ?? '',
       ]);
     }
 
@@ -3281,12 +3778,17 @@ class _AppTabsControllerState extends State<AppTabsController>
   // INICIA O TIMER DE INATIVIDADE
   void _startInactivityTimer() {
     _inactivityTimer?.cancel();
-    _inactivityTimer = Timer(_inactivityDuration, () {
-      // SE ESTÁ NA TELA DE FEEDBACKS OU ESTATÍSTICAS, MOSTRA POP-UP
+
+    // Se estiver na aba de Estatísticas (index 2), o tempo de ociosidade
+    // será de apenas 20 segundos. Nas outras, mantém os 45 segundos.
+    Duration duration = _selectedIndex == 2
+        ? const Duration(seconds: 20)
+        : _inactivityDuration;
+
+    _inactivityTimer = Timer(duration, () {
       if ((_selectedIndex == 1 || _selectedIndex == 2) && mounted) {
         _showInactivityConfirmation();
       } else if (_selectedIndex != 0 && mounted) {
-        // Para outras telas (se houver), volta diretamente
         _resetToHomeScreen();
       }
     });
@@ -3510,6 +4012,8 @@ class _AppTabsControllerState extends State<AppTabsController>
         setState(() {
           _selectedIndex = 2;
         });
+        // FORÇA O TIMER A REINICIAR COM OS 20 SEGUNDOS DA ABA 2
+        _resetTimerOnInteraction();
       }
     } else {
       // SENHA INCORRETA
@@ -3536,8 +4040,6 @@ class _AppTabsControllerState extends State<AppTabsController>
 
   // Comportamento ao tocar nos itens da barra
   void _onItemTapped(int index) {
-    _resetTimerOnInteraction();
-
     if (index == 2) {
       // Se clicou na aba Estatísticas, chama senha com ação 'stats'
       _showPasswordInput('stats');
@@ -3550,6 +4052,7 @@ class _AppTabsControllerState extends State<AppTabsController>
           _selectedIndex = index;
           _currentShift = defaultShift;
         });
+        _resetTimerOnInteraction();
         _resetHomeScreen();
         return;
       }
@@ -3559,6 +4062,7 @@ class _AppTabsControllerState extends State<AppTabsController>
     setState(() {
       _selectedIndex = index;
     });
+    _resetTimerOnInteraction();
   }
 
   void _navigateToFeedbackScreen(int rating, int tabIndex) {
@@ -3703,7 +4207,7 @@ class _AppTabsControllerState extends State<AppTabsController>
 
               // MENSAGEM
               Text(
-                'Você está há algum tempo sem interagir. Deseja continuar na tela de feedbacks?',
+                'Você está há algum tempo sem interagir. Deseja continuar nesta tela?',
                 style: const TextStyle(fontSize: 16, color: Colors.black87),
                 textAlign: TextAlign.center,
               ),
@@ -4072,8 +4576,13 @@ class _RatingScreenState extends State<RatingScreen> {
 
     // Verifica a funcionalidade escolhida para setar o timer de espera
     final appData = Provider.of<AppData>(context, listen: false);
-    // 10 segundos para Restaurante (1), 20 segundos para Ambientação (2)
-    _timeoutSeconds = appData.appFunctionality == 1 ? 10 : 20;
+
+    // TEMPO DE ESPERA NA TELA DE FEEDBACKS
+    _timeoutSeconds = appData.timeoutSeconds;
+    _remainingSeconds = _timeoutSeconds;
+
+    // Usa o valor dinâmico do AppData
+    _timeoutSeconds = appData.timeoutSeconds;
     _remainingSeconds = _timeoutSeconds;
 
     // INICIA O TIMER QUANDO A TELA DE FEEDBACKS É ABERTA
@@ -4286,6 +4795,10 @@ class _RatingScreenState extends State<RatingScreen> {
       _isSending = true;
     });
 
+    // Verifica se o texto digitado tem palavrões ===
+    final String commentText = _commentController.text;
+    final bool isIndevido = appData.containsBadWords(commentText);
+
     // --- Se passou pela validação, continua o processo normal de envio ---
 
     // Atualiza o último registro (que foi criado na tela anterior)
@@ -4300,13 +4813,36 @@ class _RatingScreenState extends State<RatingScreen> {
       comment: _commentController.text,
     );
 
-    // Feedback visual
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Feedback(s) adicionado(s) com sucesso!'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+    // Feedback visual condicional
+    if (isIndevido) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.white),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'O comentário foi ocultado por possuir palavras indevidas.',
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.orange, // Laranja para chamar atenção
+          duration: Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Feedback(s) adicionado(s) com sucesso!'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
 
     // Limpa e volta
     setState(() {
@@ -4937,6 +5473,53 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     );
   }
 
+  void _showTimeoutConfigDialog(BuildContext context, AppData appData) {
+    final TextEditingController controller = TextEditingController(
+      text: appData.timeoutSeconds.toString(),
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Configurar Inatividade'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Defina quantos segundos a tela de feedback deve aguardar antes de voltar ao início:',
+            ),
+            const SizedBox(height: 15),
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: const InputDecoration(
+                suffixText: 'segundos',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              int? newValue = int.tryParse(controller.text);
+              if (newValue != null && newValue > 0) {
+                appData.setCustomTimeout(newValue);
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final int selectedShift = widget.currentShift;
@@ -4985,6 +5568,19 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                             fontWeight: FontWeight.bold,
                           ),
                           textAlign: TextAlign.center,
+                        ),
+
+                        ElevatedButton.icon(
+                          onPressed: () =>
+                              _showTimeoutConfigDialog(context, appData),
+                          icon: const Icon(Icons.timer),
+                          label: Text(
+                            'Ajustar Tempo de Espera dos Feedbacks (${appData.timeoutSeconds}s)',
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.grey[200],
+                            foregroundColor: Colors.black87,
+                          ),
                         ),
 
                         // MAIS ESPAÇO ENTRE TÍTULO E SUBTÍTULO
