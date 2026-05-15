@@ -5002,7 +5002,7 @@ class _RatingScreenState extends State<RatingScreen> {
                 // BOTÃO VOLTAR PARA A TELA INICIAL
                 Padding(
                   padding: EdgeInsets.only(
-                    bottom: screenWidth * 0.06,
+                    bottom: screenWidth * 0.04,
                     top: screenWidth * 0.02,
                   ),
                   child: Align(
