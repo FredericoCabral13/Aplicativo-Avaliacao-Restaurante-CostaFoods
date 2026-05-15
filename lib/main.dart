@@ -320,6 +320,7 @@ class AppData extends ChangeNotifier {
     'jumento',
     'katchanga',
     'kct',
+    'kcete,',
     'kenga',
     'ladra',
     'ladrao',
@@ -4995,6 +4996,60 @@ class _RatingScreenState extends State<RatingScreen> {
                         phrasesMap: _getPhrases(), // Passando o mapa
                       ),
                     ],
+                  ),
+                ),
+
+                // BOTÃO VOLTAR PARA A TELA INICIAL
+                Padding(
+                  padding: EdgeInsets.only(
+                    bottom: screenWidth * 0.10,
+                    top: screenWidth * 0.02,
+                  ),
+                  child: Align(
+                    alignment: Alignment.center,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        _resetParentTimer(context);
+                        widget.onBackToHome();
+                      },
+                      style: ButtonStyle(
+                        // Fundo com a cor exata do AppBar: RGB(111, 136, 63)
+                        backgroundColor: MaterialStateProperty.all(
+                          const Color.fromARGB(255, 111, 136, 63),
+                        ),
+                        foregroundColor: MaterialStateProperty.all(
+                          Colors.white,
+                        ),
+                        surfaceTintColor: MaterialStateProperty.all(
+                          Colors.transparent,
+                        ),
+                        overlayColor: MaterialStateProperty.all(
+                          Colors.white.withOpacity(0.2),
+                        ),
+                        elevation: MaterialStateProperty.all(4),
+                        padding: MaterialStateProperty.all(
+                          EdgeInsets.symmetric(
+                            horizontal: isSmallScreen ? 20 : 32,
+                            vertical: isSmallScreen ? 12 : 16,
+                          ),
+                        ),
+                        shape: MaterialStateProperty.all(
+                          RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        'VOLTAR PARA\nTELA INICIAL',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: isSmallScreen ? 13 : 15,
+                          fontWeight: FontWeight.bold,
+                          height: 1.2,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
 
