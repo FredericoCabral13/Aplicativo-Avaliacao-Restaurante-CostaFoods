@@ -5002,7 +5002,7 @@ class _RatingScreenState extends State<RatingScreen> {
                 // BOTÃO VOLTAR PARA A TELA INICIAL
                 Padding(
                   padding: EdgeInsets.only(
-                    bottom: screenWidth * 0.10,
+                    bottom: screenWidth * 0.06,
                     top: screenWidth * 0.02,
                   ),
                   child: Align(
@@ -5029,8 +5029,8 @@ class _RatingScreenState extends State<RatingScreen> {
                         elevation: MaterialStateProperty.all(4),
                         padding: MaterialStateProperty.all(
                           EdgeInsets.symmetric(
-                            horizontal: isSmallScreen ? 20 : 32,
-                            vertical: isSmallScreen ? 12 : 16,
+                            horizontal: isSmallScreen ? 28 : 44,
+                            vertical: isSmallScreen ? 14 : 20,
                           ),
                         ),
                         shape: MaterialStateProperty.all(
@@ -5044,7 +5044,7 @@ class _RatingScreenState extends State<RatingScreen> {
                         'VOLTAR PARA\nTELA INICIAL',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          fontSize: isSmallScreen ? 13 : 15,
+                          fontSize: isSmallScreen ? 15 : 18,
                           fontWeight: FontWeight.bold,
                           height: 1.2,
                         ),
