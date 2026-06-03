@@ -34,6 +34,13 @@ import 'dart:io';
 
 import 'package:package_info_plus/package_info_plus.dart'; // VERSÃO DO APP NA INTERFACE MUDA DINAMICAMENTE
 
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
+import 'package:encrypt/encrypt.dart' as encrypt;
+
 // Definido uma ÚNICA vez no topo do arquivo
 typedef PhraseSelectedCallback = void Function(String phrase);
 
@@ -794,7 +801,7 @@ class AppData extends ChangeNotifier {
 
   // MÉTODO PARA DEBUG DOS REGISTROS
   void _debugRecords() {
-    print('📊 TOTAL DE REGISTROS: ${allEvaluationRecords.length}');
+    debugPrint('📊 TOTAL DE REGISTROS: ${allEvaluationRecords.length}');
     for (var record in allEvaluationRecords) {
       final recordDate = DateTime.parse(record['timestamp']);
       final recordDay = DateTime(
@@ -802,7 +809,7 @@ class AppData extends ChangeNotifier {
         recordDate.month,
         recordDate.day,
       );
-      print('   📅 Record: ${record['timestamp']} -> $recordDay');
+      debugPrint('   📅 Record: ${record['timestamp']} -> $recordDay');
     }
   }
 
@@ -830,10 +837,10 @@ class AppData extends ChangeNotifier {
       _selectedEndDate!.day,
     );
 
-    print('🔍 VALIDAÇÃO DO FILTRO:');
-    print('   Start Day: $startDay');
-    print('   End Day: $endDay');
-    print('   End is before Start: ${endDay.isBefore(startDay)}');
+    debugPrint('🔍 VALIDAÇÃO DO FILTRO:');
+    debugPrint('   Start Day: $startDay');
+    debugPrint('   End Day: $endDay');
+    debugPrint('   End is before Start: ${endDay.isBefore(startDay)}');
 
     if (endDay.isBefore(startDay)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -892,12 +899,12 @@ class AppData extends ChangeNotifier {
   // Gerencia o pedido de permissão
   Future<void> _requestStoragePermission() async {
     if (kIsWeb) return;
-    // Verifica se é Android 11 ou superior (que exige MANAGE_EXTERNAL_STORAGE)
-    if (await Permission.manageExternalStorage.isDenied) {
-      // Se ainda não tem permissão, pede.
-      // No Android 11+, isso abrirá automaticamente a tela "Acesso a todos os arquivos"
-      await Permission.manageExternalStorage.request();
-    }
+    // // Verifica se é Android 11 ou superior (que exige MANAGE_EXTERNAL_STORAGE)
+    // if (await Permission.manageExternalStorage.isDenied) {
+    //   // Se ainda não tem permissão, pede.
+    //   // No Android 11+, isso abrirá automaticamente a tela "Acesso a todos os arquivos"
+    //   await Permission.manageExternalStorage.request();
+    // }
 
     // Para Android 10 ou inferior (caso rode em aparelhos antigos)
     if (await Permission.storage.isDenied) {
@@ -1038,14 +1045,35 @@ class AppData extends ChangeNotifier {
     final url = Uri.parse('http://10.1.32.181:5000/receber_avaliacao');
 
     try {
+      // 1. Converte o registro individual (Map) para um texto JSON
+      final String dadosEmTexto = jsonEncode(record);
+
+      // 2. A CHAVE SECRETA e o VETOR (Os mesmos que estarão no servidor Python)
+      final key = encrypt.Key.fromUtf8('MinhaChaveSecretaCostaFoods32B!!');
+      final iv = encrypt.IV.fromUtf8('VetorInicializ16');
+
+      // 3. Prepara o motor de criptografia
+      final encrypter = encrypt.Encrypter(
+        encrypt.AES(key, mode: encrypt.AESMode.cbc),
+      );
+
+      // 4. Criptografa o texto JSON
+      final encrypted = encrypter.encrypt(dadosEmTexto, iv: iv);
+
+      // 5. O texto final embaralhado que vai viajar pela rede (Base64)
+      final cargaSegura = encrypted.base64;
+
+      // 6. Envia o pacote criptografado
       await http.post(
         url,
         headers: {'Content-Type': 'application/json; charset=UTF-8'},
-        body: jsonEncode(record),
+        // O servidor agora vai receber APENAS o campo 'payload_criptografado'
+        body: jsonEncode({'payload_criptografado': cargaSegura}),
       );
-      print('Dados enviados para o PC com sucesso!');
+
+      debugPrint('Dados protegidos enviados para o PC com sucesso!');
     } catch (e) {
-      print('Erro ao enviar dados para o PC: $e');
+      debugPrint('Erro ao enviar dados protegidos para o PC: $e');
       // Falhou silenciosamente. O tablet continuará funcionando e salvando localmente.
     }
   }
@@ -1078,7 +1106,17 @@ class AppData extends ChangeNotifier {
     final int turnoExato = getLiveShift();
 
     // Verifica se tem palavra indevida
-    final bool isIndevido = containsBadWords(comment ?? '');
+    // =========================================================
+    // SANITIZAÇÃO (XSS)
+    // =========================================================
+    String textoOriginal = comment ?? '';
+    String comentarioLimpo = textoOriginal
+        .replaceAll('<', '')
+        .replaceAll('>', '')
+        .replaceAll('&', 'e');
+
+    // Verifica se tem palavra indevida usando o texto já limpo
+    final bool isIndevido = containsBadWords(comentarioLimpo);
 
     final newRecord = {
       'timestamp': timestamp,
@@ -1087,8 +1125,7 @@ class AppData extends ChangeNotifier {
       'satisfacao': satisfacao, // ADICIONA SATISFAÇÃO
       'positivos': positiveFeedbacks.join('; '),
       'negativos': negativeFeedbacks.join('; '),
-      'comentario': comment ?? '',
-      'satisfacao': satisfacao,
+      'comentario': comentarioLimpo,
       'unidade_csv': unidadeCSV,
       'comentario_indevido': isIndevido ? '1' : '', // Adicionado ao JSON
     };
@@ -1126,11 +1163,26 @@ class AppData extends ChangeNotifier {
 
     lastRecord['positivos'] = positiveFeedbacks.join('; ');
     lastRecord['negativos'] = negativeFeedbacks.join('; ');
-    lastRecord['comentario'] = comment ?? '';
+    // lastRecord['comentario'] = comment ?? '';
+
+    // =========================================================
+    // SANITIZAÇÃO NA ATUALIZAÇÃO (XSS)
+    // =========================================================
+    String textoOriginal = comment ?? '';
+    String comentarioLimpo = textoOriginal
+        .replaceAll('<', '')
+        .replaceAll('>', '')
+        .replaceAll('&', 'e');
+
+    lastRecord['comentario'] = comentarioLimpo; // Salva seguro
 
     // Atualiza a flag caso o usuário digite a ofensa nesta tela
-    final bool isIndevido = containsBadWords(comment ?? '');
+    final bool isIndevido = containsBadWords(comentarioLimpo);
     lastRecord['comentario_indevido'] = isIndevido ? '1' : '';
+
+    // Atualiza a flag caso o usuário digite a ofensa nesta tela
+    // final bool isIndevido = containsBadWords(comment ?? '');
+    // lastRecord['comentario_indevido'] = isIndevido ? '1' : '';
 
     // Atualiza a lista na memória
     allEvaluationRecords[lastIndex] = lastRecord;
@@ -1259,7 +1311,19 @@ class AppData extends ChangeNotifier {
 
     // 2. GUARDA NO COFRE INTERNO INVISÍVEL (SharedPreferences)
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('backup_database_$appFunctionality', csvString);
+    // await prefs.setString('backup_database_$appFunctionality', csvString);
+    // 1. Pega as mesmas chaves que você já configurou
+    final key = encrypt.Key.fromUtf8('MinhaChaveSecretaCostaFoods32B!!');
+    final iv = encrypt.IV.fromUtf8('VetorInicializ16');
+    final encrypter = encrypt.Encrypter(
+      encrypt.AES(key, mode: encrypt.AESMode.cbc),
+    );
+
+    // 2. Criptografa o CSV antes de salvar na memória do tablet
+    final backupTrancado = encrypter.encrypt(csvString, iv: iv).base64;
+
+    // 3. Salva o texto ininteligível no SharedPreferences
+    await prefs.setString('backup_database_$appFunctionality', backupTrancado);
 
     // 3. GUARDA O FICHEIRO FÍSICO NA PASTA DOWNLOADS (Android)
     try {
@@ -1270,10 +1334,10 @@ class AppData extends ChangeNotifier {
         // Adiciona o BOM (\uFEFF) para o Excel ler os acentos (UTF-8) perfeitamente
         const String bom = '\uFEFF';
         await file.writeAsString(bom + csvString, encoding: utf8);
-        print("Ficheiro guardado com sucesso em: $filePath");
+        debugPrint("Ficheiro guardado com sucesso em: $filePath");
       }
     } catch (e) {
-      print("Erro ao tentar guardar o ficheiro físico: $e");
+      debugPrint("Erro ao tentar guardar o ficheiro físico: $e");
     }
 
     // 4. ENVIA PARA O SERVIDOR PYTHON
@@ -1298,7 +1362,7 @@ class AppData extends ChangeNotifier {
         }
       }
     } catch (e) {
-      print("Aviso: Não foi possível ler o ficheiro físico. Erro: $e");
+      debugPrint("Aviso: Não foi possível ler o ficheiro físico. Erro: $e");
     }
 
     // 2. SE FALHAR, LÊ DO COFRE INTERNO (SharedPreferences)
@@ -1780,9 +1844,9 @@ class AppData extends ChangeNotifier {
       ]);
     }
 
-    print('🎯 FILTRO APLICADO:');
-    print('   Data Inicial: $_selectedStartDate');
-    print('   Data Final: $_selectedEndDate');
+    debugPrint('🎯 FILTRO APLICADO:');
+    debugPrint('   Data Inicial: $_selectedStartDate');
+    debugPrint('   Data Final: $_selectedEndDate');
 
     for (var record in allEvaluationRecords) {
       final recordDate = DateTime.parse(record['timestamp']);
@@ -1900,7 +1964,9 @@ class AppData extends ChangeNotifier {
       ]);
     }
 
-    print('✅ Filtro finalizado: ${csvData.length - 1} registros incluídos');
+    debugPrint(
+      '✅ Filtro finalizado: ${csvData.length - 1} registros incluídos',
+    );
     return const ListToCsvConverter(fieldDelimiter: ';').convert(csvData);
   }
 
@@ -2017,7 +2083,7 @@ class AppData extends ChangeNotifier {
   //       await _openFileManagerFallback(path);
   //     }
   //   } catch (e) {
-  //     print('Erro ao abrir gerenciador: $e');
+  //     debugPrint('Erro ao abrir gerenciador: $e');
   //     await _openFileManagerFallback(path);
   //   }
   // }
@@ -2042,7 +2108,7 @@ class AppData extends ChangeNotifier {
   // MOSTRAR CAMINHO COMPLETO
   // void _showPathDialog(String path) {
   //   // Pode ser implementado se quiser mostrar um dialog com o caminho
-  //   print('Caminho do arquivo: $path');
+  //   debugPrint('Caminho do arquivo: $path');
   // }
 
   // CONVERTER CAMINHO PARA FORMATO ANDROID
@@ -2123,37 +2189,73 @@ class AppData extends ChangeNotifier {
 
   // SALVAR NO DISPOSITIVO
   Future<void> _saveToDownloads(BuildContext context, String csvData) async {
-    try {
-      // 1. Gera o nome do arquivo com timestamp (mantendo sua lógica original)
-      final timestamp = DateTime.now().toString().replaceAll(
-        RegExp(r'[^0-9]'),
-        '_',
-      );
-      final fileName = '${_exportPrefix}_$timestamp.csv';
+    // try {
+    //   // 1. Gera o nome do arquivo com timestamp (mantendo sua lógica original)
+    //   final timestamp = DateTime.now().toString().replaceAll(
+    //     RegExp(r'[^0-9]'),
+    //     '_',
+    //   );
+    //   final fileName = '${_exportPrefix}_$timestamp.csv';
 
-      // 2. CHAMA O HELPER MULTIPLATAFORMA
-      // No Android: Vai salvar silenciosamente na pasta Downloads.
-      // Na Web: Vai abrir a janela padrão do navegador para o usuário baixar.
-      await file_helper.saveFile(fileName, csvData);
+    //   // 2. CHAMA O HELPER MULTIPLATAFORMA
+    //   // No Android: Vai salvar silenciosamente na pasta Downloads.
+    //   // Na Web: Vai abrir a janela padrão do navegador para o usuário baixar.
+    //   await file_helper.saveFile(fileName, csvData);
+
+    //   if (context.mounted) {
+    //     ScaffoldMessenger.of(context).showSnackBar(
+    //       SnackBar(
+    //         content: const Text('Arquivo exportado com sucesso!'),
+    //         backgroundColor: Colors.green,
+    //         duration: const Duration(seconds: 3),
+    //         // Nota: O botão de "Abrir" foi removido pois a forma de abrir
+    //         // varia muito entre Web e Mobile.
+    //       ),
+    //     );
+    //   }
+
+    //   debugPrint('✔️ Arquivo enviado para exportação: $fileName');
+    // } catch (e) {
+    //   if (context.mounted) {
+    //     ScaffoldMessenger.of(context).showSnackBar(
+    //       SnackBar(
+    //         content: Text('Erro ao salvar o arquivo: $e'),
+    //         backgroundColor: Colors.red,
+    //       ),
+    //     );
+    //   }
+    // }
+    try {
+      // Mas usamos a lógica nova do path_provider aqui dentro!
+      final directory = await getExternalStorageDirectory();
+      if (directory == null) throw Exception("Armazenamento indisponível");
+
+      final filePath = '${directory.path}/feedbacks_costafoods.csv';
+      final file = File(filePath);
+      final bom = '\uFEFF';
+
+      await file.writeAsString(
+        bom + csvData,
+        mode: FileMode.write,
+        flush: true,
+      );
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Arquivo exportado com sucesso!'),
+          const SnackBar(
+            content: Text('Banco de dados local atualizado com sucesso!'),
             backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
-            // Nota: O botão de "Abrir" foi removido pois a forma de abrir
-            // varia muito entre Web e Mobile.
+            duration: Duration(seconds: 3),
           ),
         );
       }
 
-      print('✔️ Arquivo enviado para exportação: $fileName');
+      debugPrint('✔️ Arquivo local sobrescrito de forma segura em: $filePath');
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro ao salvar o arquivo: $e'),
+            content: Text('Erro ao atualizar o arquivo: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -2180,7 +2282,7 @@ class AppData extends ChangeNotifier {
   //       );
   //     }
   //   } catch (e) {
-  //     print('Erro ao salvar em Documentos: $e');
+  //     debugPrint('Erro ao salvar em Documentos: $e');
   //     rethrow;
   //   }
   // }
@@ -2507,12 +2609,12 @@ Arquivo contém dados completos das avaliações dos clientes.
       var response = await request.send();
 
       if (response.statusCode == 200) {
-        print('✅ CSV enviado para o PC com sucesso!');
+        debugPrint('✅ CSV enviado para o PC com sucesso!');
       } else {
-        print('❌ Falha ao enviar CSV. Código: ${response.statusCode}');
+        debugPrint('❌ Falha ao enviar CSV. Código: ${response.statusCode}');
       }
     } catch (e) {
-      print('Erro de conexão ao enviar CSV: $e');
+      debugPrint('Erro de conexão ao enviar CSV: $e');
     }
   }
 
@@ -3584,8 +3686,9 @@ class _AppTabsControllerState extends State<AppTabsController>
   int? _selectedRatingFromHome;
   int? _initialTabIndex;
 
-  // SENHA PARA ACESSAR ESTATÍSTICAS
-  final String _statisticsPassword = "986532"; // Senha definida no código
+  // Hash SHA-256 da senha original
+  final String _statisticsPasswordHash =
+      "7f22c371df7690c941e458b6f9f325635cd4b69407076a7603aa8df8e1df0f9e";
   bool _showPasswordDialog = false;
   String _enteredPassword = "";
 
@@ -3654,67 +3757,67 @@ class _AppTabsControllerState extends State<AppTabsController>
     return 5;
   }
 
-  // Método para verificar permissão e mostrar o Dialog explicativo
-  Future<void> _checkAndRequestPermission() async {
-    if (kIsWeb) return;
+  // // Método para verificar permissão e mostrar o Dialog explicativo
+  // Future<void> _checkAndRequestPermission() async {
+  //   if (kIsWeb) return;
 
-    // Verifica se já temos a permissão
-    var status = await Permission.manageExternalStorage.status;
+  //   // Verifica se já temos a permissão
+  //   var status = await Permission.manageExternalStorage.status;
 
-    // Se não tiver permissão (e não for Android antigo que usa outra permissão)
-    if (!status.isGranted) {
-      if (!mounted) return; // Segurança do Flutter
+  //   // Se não tiver permissão (e não for Android antigo que usa outra permissão)
+  //   if (!status.isGranted) {
+  //     if (!mounted) return; // Segurança do Flutter
 
-      // Mostra o Dialog explicando o motivo
-      showDialog(
-        context: context,
-        barrierDismissible: false, // O usuário é obrigado a clicar em um botão
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: const Text('Permissão Necessária'),
-            content: const Text(
-              'Para que seus dados NÃO SEJAM PERDIDOS caso você desinstale o app, '
-              'precisamos de permissão para salvar o arquivo de backup na sua pasta de Downloads.\n\n'
-              'Por favor, ative a permissão para "Costa Foods Feedbacks" acessar os arquivos.\n\n'
-              'Caso não tenha ativado, feche o aplicativo e o abra novamente.',
-              style: TextStyle(fontSize: 16),
-            ),
-            actions: [
-              TextButton(
-                child: const Text(
-                  'Agora não',
-                  style: TextStyle(color: Colors.grey),
-                ),
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Atenção: Sem essa permissão, os dados serão apagados ao desinstalar o app.',
-                      ),
-                      backgroundColor: Colors.orange,
-                    ),
-                  );
-                },
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color.fromARGB(255, 111, 136, 63),
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('Já ativei'),
-                onPressed: () async {
-                  Navigator.of(context).pop(); // Fecha o dialog
-                  // Abre a tela de configurações do Android
-                  await Permission.manageExternalStorage.request();
-                },
-              ),
-            ],
-          );
-        },
-      );
-    }
-  }
+  //     // Mostra o Dialog explicando o motivo
+  //     showDialog(
+  //       context: context,
+  //       barrierDismissible: false, // O usuário é obrigado a clicar em um botão
+  //       builder: (BuildContext context) {
+  //         return AlertDialog(
+  //           title: const Text('Permissão Necessária'),
+  //           content: const Text(
+  //             'Para que seus dados NÃO SEJAM PERDIDOS caso você desinstale o app, '
+  //             'precisamos de permissão para salvar o arquivo de backup na sua pasta de Downloads.\n\n'
+  //             'Por favor, ative a permissão para "Costa Foods Feedbacks" acessar os arquivos.\n\n'
+  //             'Caso não tenha ativado, feche o aplicativo e o abra novamente.',
+  //             style: TextStyle(fontSize: 16),
+  //           ),
+  //           actions: [
+  //             TextButton(
+  //               child: const Text(
+  //                 'Agora não',
+  //                 style: TextStyle(color: Colors.grey),
+  //               ),
+  //               onPressed: () {
+  //                 Navigator.of(context).pop();
+  //                 ScaffoldMessenger.of(context).showSnackBar(
+  //                   const SnackBar(
+  //                     content: Text(
+  //                       'Atenção: Sem essa permissão, os dados serão apagados ao desinstalar o app.',
+  //                     ),
+  //                     backgroundColor: Colors.orange,
+  //                   ),
+  //                 );
+  //               },
+  //             ),
+  //             ElevatedButton(
+  //               style: ElevatedButton.styleFrom(
+  //                 backgroundColor: const Color.fromARGB(255, 111, 136, 63),
+  //                 foregroundColor: Colors.white,
+  //               ),
+  //               child: const Text('Já ativei'),
+  //               onPressed: () async {
+  //                 Navigator.of(context).pop(); // Fecha o dialog
+  //                 // Abre a tela de configurações do Android
+  //                 await Permission.manageExternalStorage.request();
+  //               },
+  //             ),
+  //           ],
+  //         );
+  //       },
+  //     );
+  //   }
+  // }
 
   @override
   void initState() {
@@ -3729,9 +3832,9 @@ class _AppTabsControllerState extends State<AppTabsController>
       _enableKioskMode();
     }
     WakelockPlus.enable(); // Dizer ao tablet para NUNCA desligar a tela enquanto o app estiver aberto
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkAndRequestPermission();
-    });
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   _checkAndRequestPermission();
+    // });
   }
 
   // TENTA ATIVAR O MODO KIOSK (BLOQUEIA HOME E RECENTES)
@@ -3741,7 +3844,7 @@ class _AppTabsControllerState extends State<AppTabsController>
     try {
       await platform.invokeMethod('startKiosk');
     } catch (e) {
-      print(
+      debugPrint(
         "Erro ao ativar Kiosk Mode (pode precisar de configuração nativa): $e",
       );
     }
@@ -3754,7 +3857,7 @@ class _AppTabsControllerState extends State<AppTabsController>
     try {
       await platform.invokeMethod('stopKiosk');
     } catch (e) {
-      print("Erro ao desativar Kiosk Mode: $e");
+      debugPrint("Erro ao desativar Kiosk Mode: $e");
     }
   }
 
@@ -4014,7 +4117,16 @@ class _AppTabsControllerState extends State<AppTabsController>
     _keyboardInactivityTimer?.cancel();
     final enteredPassword = _passwordController.text;
 
-    if (enteredPassword == _statisticsPassword) {
+    // 1. Transforma a senha que o usuário digitou em Bytes e depois em Hash
+    var bytes = utf8.encode(enteredPassword);
+    var enteredHash = sha256.convert(bytes).toString();
+
+    debugPrint('=============================================');
+    debugPrint('O HASH VERDADEIRO É: $enteredHash');
+    debugPrint('=============================================');
+
+    // 2. Compara o Hash gerado com o Hash seguro da senha
+    if (enteredHash == _statisticsPasswordHash) {
       // SENHA CORRETA
       Navigator.of(context).pop(); // Fecha o dialog
 
@@ -4139,7 +4251,8 @@ class _AppTabsControllerState extends State<AppTabsController>
                     controller: _passwordController,
                     onChanged: (value) {
                       _resetKeyboardTimer();
-                      if (value.length == _statisticsPassword.length) {
+                      // SUBSTITUÍDO: Verifica se chegou a 6 dígitos
+                      if (value.length == 6) {
                         Future.delayed(const Duration(milliseconds: 100), () {
                           _checkPassword();
                         });
@@ -4153,9 +4266,8 @@ class _AppTabsControllerState extends State<AppTabsController>
                     keyboardType: TextInputType.number,
                     inputFormatters: [
                       FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(
-                        _statisticsPassword.length,
-                      ),
+                      // SUBSTITUÍDO: Limita a digitação a 6 caracteres
+                      LengthLimitingTextInputFormatter(6),
                     ],
                     autofocus: true,
                   ),

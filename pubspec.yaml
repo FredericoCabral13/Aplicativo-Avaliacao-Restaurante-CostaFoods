@@ -23,6 +23,8 @@ dependencies:
   wakelock_plus: ^1.2.8 # Para manter a tela ligada durante o uso do aplicativo
   http: ^1.2.0
   package_info_plus: ^9.0.1
+  crypto: ^3.0.3
+  encrypt: ^5.0.3
   
 dev_dependencies:
   flutter_test:
