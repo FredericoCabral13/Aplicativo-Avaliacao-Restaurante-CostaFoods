@@ -335,7 +335,6 @@ class AppData extends ChangeNotifier {
     'lazarento',
     'lesbofetiche',
     'lixa-pica',
-    'lixo',
     'macaca',
     'macaco',
     'maconha',
@@ -373,7 +372,6 @@ class AppData extends ChangeNotifier {
     'nojenta',
     'nojento',
     'otario',
-    'paia',
     'papa-duro',
     'papa duro',
     'papeldeenrolarprego',
@@ -448,7 +446,6 @@ class AppData extends ChangeNotifier {
     'retardado',
     'rola',
     'rolinha',
-    'rosca',
     'saca-rola',
     'safada',
     'safadas',
@@ -508,7 +505,6 @@ class AppData extends ChangeNotifier {
     'trepadas',
     'trouxa',
     'troxa',
-    'vaca',
     'vacilao',
     'vadia',
     'vadiagem',
@@ -1120,6 +1116,7 @@ class AppData extends ChangeNotifier {
 
     final newRecord = {
       'timestamp': timestamp,
+      'funcionalidade': appFunctionality == 1 ? 'restaurante' : 'ambientacao',
       'turno': shift,
       'estrelas': star,
       'satisfacao': satisfacao, // ADICIONA SATISFAÇÃO
@@ -1365,12 +1362,32 @@ class AppData extends ChangeNotifier {
       debugPrint("Aviso: Não foi possível ler o ficheiro físico. Erro: $e");
     }
 
-    // 2. SE FALHAR, LÊ DO COFRE INTERNO (SharedPreferences)
+    // 2. SE FALHAR, LÊ DO COFRE INTERNO (SharedPreferences) E DESCRIPTOGRAFA
     if (csvString == null || csvString.isEmpty) {
       final prefs = await SharedPreferences.getInstance();
-      csvString = prefs.getString('backup_database_$appFunctionality');
+      final backupTrancado = prefs.getString(
+        'backup_database_$appFunctionality',
+      );
+
+      if (backupTrancado != null && backupTrancado.isNotEmpty) {
+        try {
+          // As mesmas chaves usadas para trancar no saveDataToCSV
+          final key = encrypt.Key.fromUtf8('MinhaChaveSecretaCostaFoods32B!!');
+          final iv = encrypt.IV.fromUtf8('VetorInicializ16');
+          final encrypter = encrypt.Encrypter(
+            encrypt.AES(key, mode: encrypt.AESMode.cbc),
+          );
+
+          // Destranca o texto base64 voltando a ser o seu CSV normal
+          csvString = encrypter.decrypt64(backupTrancado, iv: iv);
+        } catch (e) {
+          debugPrint("Erro ao tentar descriptografar o backup interno: $e");
+          csvString = null; // Se falhar, zera para não quebrar o app
+        }
+      }
     }
 
+    // 3. SE DEPOIS DE TUDO O ARQUIVO AINDA ESTIVER VAZIO, ABORTA O CARREGAMENTO
     if (csvString == null || csvString.isEmpty) return;
 
     final csvData = const CsvToListConverter(
@@ -5120,9 +5137,92 @@ class _RatingScreenState extends State<RatingScreen> {
                   child: Align(
                     alignment: Alignment.center,
                     child: ElevatedButton(
+                      // =======================================================
+                      // INÍCIO DA SUBSTITUIÇÃO DO ONPRESSED
+                      // =======================================================
                       onPressed: () {
-                        _resetParentTimer(context);
-                        widget.onBackToHome();
+                        // 1. Verifica se o usuário selecionou alguma frase ou escreveu algum comentário
+                        bool hasContent =
+                            _pendingDetailedPhrases.isNotEmpty ||
+                            _commentController.text.trim().isNotEmpty;
+
+                        if (hasContent && !_isSending) {
+                          // 2. TEM CONTEÚDO: Funciona como o botão "Enviar feedback adicional"
+                          setState(() {
+                            _isSending = true;
+                          });
+
+                          final appData = Provider.of<AppData>(
+                            context,
+                            listen: false,
+                          );
+                          final String commentText = _commentController.text;
+                          final bool isIndevido = appData.containsBadWords(
+                            commentText,
+                          );
+
+                          // Atualiza o CSV e a lista em memória (Adiciona na avaliação existente)
+                          appData.updateLastEvaluation(
+                            newStarRating: _selectedStars,
+                            positiveFeedbacks: _pendingDetailedPhrases
+                                .where((p) => appData.isPositive(p))
+                                .toSet(),
+                            negativeFeedbacks: _pendingDetailedPhrases
+                                .where((p) => !appData.isPositive(p))
+                                .toSet(),
+                            comment: commentText,
+                          );
+
+                          // Exibe o aviso visual para o usuário
+                          if (isIndevido) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.warning_amber_rounded,
+                                      color: Colors.white,
+                                    ),
+                                    SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        'O comentário foi ocultado por possuir palavras indevidas.',
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                backgroundColor: Colors.orange,
+                                duration: Duration(seconds: 4),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Feedback(s) adicionado(s) com sucesso!',
+                                ),
+                                backgroundColor: Colors.green,
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          }
+
+                          // Limpa a tela e reseta variáveis para o próximo usuário
+                          setState(() {
+                            _selectedStars = 0;
+                            _pendingDetailedPhrases.clear();
+                            _commentController.clear();
+                            _isSending = false;
+                          });
+
+                          // Encerra e volta
+                          _resetParentTimer(context);
+                          widget.onBackToHome();
+                        } else {
+                          // 3. NÃO TEM CONTEÚDO: Apenas cancela e volta para a tela inicial
+                          _resetParentTimer(context);
+                          widget.onBackToHome();
+                        }
                       },
                       style: ButtonStyle(
                         // Fundo com a cor exata do AppBar: RGB(111, 136, 63)
