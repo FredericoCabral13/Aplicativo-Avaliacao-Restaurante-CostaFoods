@@ -105,6 +105,7 @@ class AppData extends ChangeNotifier {
     'Matrizeiro Esmeraldas',
     'Matrizeiro C. do Cajuru',
     'Armazém de Grãos',
+    'Araguari',
     'Teste',
   ];
 
