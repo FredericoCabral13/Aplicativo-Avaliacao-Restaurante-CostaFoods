@@ -36,6 +36,11 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/costa_foods_feedbacks.png
+    - assets/images/love.gif
+    - assets/images/happy.gif
+    - assets/images/neutral.gif
+    - assets/images/sad.gif
+    - assets/images/angry.gif
     - assets/images/love.png
     - assets/images/happy.png
     - assets/images/neutral.png

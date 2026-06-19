@@ -4216,12 +4216,10 @@ class _AppTabsControllerState extends State<AppTabsController>
     _resetTimerOnInteraction();
 
     // ADICIONE uma animação suave:
-    Future.delayed(Duration.zero, () {
-      setState(() {
-        _selectedRatingFromHome = rating;
-        _initialTabIndex = tabIndex;
-        _selectedIndex = 1;
-      });
+    setState(() {
+      _selectedRatingFromHome = rating;
+      _initialTabIndex = tabIndex;
+      _selectedIndex = 1;
     });
   }
 
@@ -6779,11 +6777,11 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
 
   // EMOJIS NA ORDEM CORRETA PARA A NOVA SEQUÊNCIA
   final List<String> _ratingImagePaths = [
-    'assets/images/love.png', // 😍
-    'assets/images/happy.png', // 🙂
-    'assets/images/neutral.png', // 😐
-    'assets/images/sad.png', // 😟
-    'assets/images/angry.png', // 😠
+    'assets/images/love.gif', // 😍
+    'assets/images/happy.gif', // 🙂
+    'assets/images/neutral.gif', // 😐
+    'assets/images/sad.gif', // 😟
+    'assets/images/angry.gif', // 😠
   ];
 
   @override
@@ -6869,7 +6867,7 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
 
     // 3. NAVEGA PARA A TELA DE DETALHES
     // Aumentei um pouco o tempo (800ms) para a pessoa ler o pop-up antes de mudar
-    Future.delayed(const Duration(milliseconds: 800), () {
+    Future.delayed(const Duration(milliseconds: 200), () {
       final int initialTab = (star >= 4) ? 0 : 1;
       widget.onRatingSelected(
         star,
@@ -7016,16 +7014,35 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                                       begin: 1.0,
                                       end: isSelected ? 1.3 : 1.0,
                                     ),
-                                    duration: const Duration(milliseconds: 300),
+                                    duration: const Duration(milliseconds: 75),
+
+                                    // 1. CARREGAMOS O GIF AQUI FORA (Ele não será destruído a cada frame)
+                                    child: Image.asset(
+                                      _ratingImagePaths[index],
+                                      width: isSmallScreen
+                                          ? 60
+                                          : (isLargeScreen ? 120 : 90),
+                                      height: isSmallScreen
+                                          ? 60
+                                          : (isLargeScreen ? 120 : 90),
+                                      fit: BoxFit.contain,
+                                      gaplessPlayback:
+                                          true, // <-- MÁGICA: GARANTE QUE O GIF NÃO CONGELE/PISQUE
+                                    ),
+
+                                    // 2. O GIF PASSA PRONTO COMO "childAnimated"
                                     builder:
                                         (
                                           BuildContext context,
                                           double scale,
-                                          Widget? child,
+                                          Widget? childAnimated,
                                         ) {
                                           return Container(
                                             decoration: BoxDecoration(
                                               shape: BoxShape.circle,
+                                              color: const Color(
+                                                0xFFE3E3E3,
+                                              ), // Mantido o fundo cinza
                                               boxShadow: isSelected
                                                   ? [
                                                       BoxShadow(
@@ -7049,20 +7066,8 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                                             ),
                                             child: Transform.scale(
                                               scale: scale,
-                                              child: Image.asset(
-                                                _ratingImagePaths[index],
-                                                width: isSmallScreen
-                                                    ? 60
-                                                    : (isLargeScreen
-                                                          ? 120
-                                                          : 90),
-                                                height: isSmallScreen
-                                                    ? 60
-                                                    : (isLargeScreen
-                                                          ? 120
-                                                          : 90),
-                                                fit: BoxFit.contain,
-                                              ),
+                                              child:
+                                                  childAnimated, // <-- O GIF RODA LISO AQUI
                                             ),
                                           );
                                         },
