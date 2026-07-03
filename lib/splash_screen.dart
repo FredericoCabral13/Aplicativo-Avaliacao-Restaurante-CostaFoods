@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'main.dart'; // ✅ Certifique-se deste import
+import 'package:flutter/foundation.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -12,20 +13,22 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    print('🎯 SplashScreen iniciada'); // ✅ DEBUG
+    if (kDebugMode) {
+      debugPrint('SplashScreen iniciada');
+    } // ✅ DEBUG
 
     Future.delayed(const Duration(seconds: 2), () {
-      print('🎯 Navegando para AppTabsController...'); // ✅ DEBUG
+      debugPrint('🎯 Navegando para AppTabsController...'); // ✅ DEBUG
 
       Navigator.of(context)
           .pushReplacement(
             MaterialPageRoute(builder: (context) => const AppTabsController()),
           )
           .then((_) {
-            print('🎯 Navegação completada'); // ✅ DEBUG
+            debugPrint('🎯 Navegação completada'); // ✅ DEBUG
           })
           .catchError((error) {
-            print('❌ Erro na navegação: $error'); // ✅ DEBUG
+            debugPrint('❌ Erro na navegação: $error'); // ✅ DEBUG
           });
     });
   }
