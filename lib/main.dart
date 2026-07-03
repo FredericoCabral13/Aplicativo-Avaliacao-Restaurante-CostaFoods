@@ -35,11 +35,72 @@ import 'dart:io';
 import 'package:package_info_plus/package_info_plus.dart'; // VERSÃO DO APP NA INTERFACE MUDA DINAMICAMENTE
 
 import 'package:path_provider/path_provider.dart';
-import 'dart:io';
-import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
+
+import 'package:flutter/semantics.dart'; // IMPORTAÇÃO PARA O ALTO-FALANTE (ACESSIBILIDADE)
+import 'package:flutter_tts/flutter_tts.dart'; // Motor de voz nativo
+
+// ===================================================================
+// MODELOS DE DADOS DINÂMICOS (PAINEL ADM)
+// ===================================================================
+
+class AppFunctionalityConfig {
+  String id;
+  String title;
+  List<String> shifts;
+  List<String> categories;
+  Map<String, List<String>> positiveButtons;
+  Map<String, List<String>> negativeButtons;
+
+  AppFunctionalityConfig({
+    required this.id,
+    required this.title,
+    required this.shifts,
+    required this.categories,
+    required this.positiveButtons,
+    required this.negativeButtons,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'shifts': shifts,
+    'categories': categories,
+    'positiveButtons': positiveButtons,
+    'negativeButtons': negativeButtons,
+  };
+
+  factory AppFunctionalityConfig.fromJson(Map<String, dynamic> json) {
+    return AppFunctionalityConfig(
+      id: json['id'],
+      title: json['title'],
+      shifts: List<String>.from(json['shifts']),
+      categories: List<String>.from(json['categories']),
+      positiveButtons: Map<String, List<dynamic>>.from(
+        json['positiveButtons'],
+      ).map((k, v) => MapEntry(k, List<String>.from(v))),
+      negativeButtons: Map<String, List<dynamic>>.from(
+        json['negativeButtons'],
+      ).map((k, v) => MapEntry(k, List<String>.from(v))),
+    );
+  }
+}
+
+class UnitConfig {
+  String name;
+  List<String> uniforms;
+
+  UnitConfig({required this.name, this.uniforms = const []});
+
+  Map<String, dynamic> toJson() => {'name': name, 'uniforms': uniforms};
+
+  factory UnitConfig.fromJson(Map<String, dynamic> json) => UnitConfig(
+    name: json['name'],
+    uniforms: List<String>.from(json['uniforms'] ?? []),
+  );
+}
 
 // Definido uma ÚNICA vez no topo do arquivo
 typedef PhraseSelectedCallback = void Function(String phrase);
@@ -75,7 +136,7 @@ class AppData extends ChangeNotifier {
     // 2. Formata o nome para ser seguro em arquivos de servidor (tira acentos, espaços e deixa minúsculo)
     String nomeFormatado = nomeUnidade
         .toLowerCase()
-        .replaceAll(' - ', '_')
+        .replaceAll(' - ', '-')
         .replaceAll(' ', '_')
         .replaceAll(RegExp(r'[áàãâ]'), 'a')
         .replaceAll(RegExp(r'[éèê]'), 'e')
@@ -86,8 +147,8 @@ class AppData extends ChangeNotifier {
 
     // 3. Retorna o nome final com a unidade embutida
     return appFunctionality == 1
-        ? 'avaliacoes_restaurante_$nomeFormatado.csv'
-        : 'avaliacoes_ambientacao_$nomeFormatado.csv';
+        ? 'avaliacoes_restaurante-$nomeFormatado.csv'
+        : 'avaliacoes_ambientacao-$nomeFormatado.csv';
   }
 
   // Prefixo para os arquivos exportados/compartilhados manualmente
@@ -97,24 +158,178 @@ class AppData extends ChangeNotifier {
         : 'relatorio_ambientacao';
   }
 
-  // LISTA DE UNIDADES DA EMPRESA
-  final List<String> companyUnits = [
-    'Matriz',
-    'Incubatório',
-    'Fábrica de Ração',
-    'Matrizeiro Esmeraldas',
-    'Matrizeiro C. do Cajuru',
-    'Armazém de Grãos',
-    'Araguari',
-    'Teste',
-  ];
+  // // LISTA DE UNIDADES DA EMPRESA
+  // final List<String> companyUnits = [
+  //   'Matriz',
+  //   'Incubatório',
+  //   'Fábrica de Ração',
+  //   'Matrizeiro Esmeraldas',
+  //   'Matrizeiro C. do Cajuru',
+  //   'Armazém de Grãos',
+  //   'Araguari',
+  //   'Teste',
+  // ];
 
-  // LISTA DE TIPOS DE UNIFORME PARA MATRIZ
-  final List<String> uniformTypes = [
-    'Administrativo',
-    'Uniforme Branco',
-    //'Uniforme Colorido',
-  ];
+  // // LISTA DE TIPOS DE UNIFORME PARA MATRIZ
+  // final List<String> uniformTypes = [
+  //   'Administrativo',
+  //   'Uniforme Branco',
+  //   //'Uniforme Colorido',
+  // ];
+
+  // ===============================================================
+  // VARIÁVEIS DINÂMICAS DO ADMINISTRADOR
+  // ===============================================================
+  List<UnitConfig> _units = [];
+  bool _isTextToSpeechEnabled = false; // Controle do Alto-falante
+
+  // ==========================================
+  // MOTOR DE VOZ (TEXT-TO-SPEECH) COM TRAVA ANTI-SPAM
+  // ==========================================
+  final FlutterTts _flutterTts = FlutterTts();
+  bool _isSpeaking = false; // TRAVA: Impede cliques rápidos enquanto fala
+  bool _voiceConfigured = false; // OTIMIZAÇÃO: Configura a voz apenas 1 vez
+
+  Future<void> speakPhrase(String text) async {
+    if (!_isTextToSpeechEnabled) return;
+
+    // 1. TRAVA DE SEGURANÇA: Se já está falando alguma frase, ignora o clique!
+    if (_isSpeaking) return;
+
+    try {
+      _isSpeaking = true; // Fecha a trava para novos cliques
+
+      // 2. OTIMIZAÇÃO: Só busca e configura a voz na primeira vez que clicar
+      if (!_voiceConfigured) {
+        await _flutterTts.setLanguage("pt-BR");
+        await _flutterTts.setSpeechRate(0.45);
+        await _flutterTts.setPitch(1.35);
+
+        // O COMANDO CORRETO PARA A ESPERA NATIVA É ESTE:
+        await _flutterTts.awaitSpeakCompletion(true);
+
+        try {
+          final List<dynamic> voices = await _flutterTts.getVoices;
+          for (var voice in voices) {
+            final name = voice["name"].toString().toLowerCase();
+            final locale = voice["locale"].toString().toLowerCase();
+            if (locale.contains("br") &&
+                (name.contains("afs") ||
+                    name.contains("ptd") ||
+                    name.contains("network") ||
+                    name.contains("female"))) {
+              await _flutterTts.setVoice({
+                "name": voice["name"],
+                "locale": voice["locale"],
+              });
+              break;
+            }
+          }
+        } catch (e) {
+          debugPrint("Erro ao buscar voz feminina em alta definição: $e");
+        }
+        _voiceConfigured = true; // Marca como configurado
+      }
+
+      // 3. Limpa o canal de áudio por garantia e lê a frase até o final
+      await _flutterTts.stop();
+      await _flutterTts.speak(text);
+    } catch (e) {
+      debugPrint("Erro ao executar TTS: $e");
+    } finally {
+      // 4. LIBERA A TRAVA: Assim que a frase terminar (ou se der erro), permite clicar novamente
+      _isSpeaking = false;
+    }
+  }
+
+  // TÍTULOS DINÂMICOS
+  String _restaurantTitle = 'Qual sua experiência geral?';
+  String _orgTitle =
+      'Qual a sua experiência geral com a ambientação da empresa?';
+
+  String get restaurantTitle => _restaurantTitle;
+  String get orgTitle => _orgTitle;
+  String get currentTitle =>
+      appFunctionality == 1 ? _restaurantTitle : _orgTitle;
+
+  void updateTitle(int funcId, String newTitle) {
+    if (funcId == 1) _restaurantTitle = newTitle;
+    if (funcId == 2) _orgTitle = newTitle;
+    saveAdminSettings();
+    notifyListeners();
+  }
+
+  List<UnitConfig> get units => _units;
+
+  // Getters adaptados para o app continuar funcionando normalmente
+  List<String> get companyUnits {
+    if (_units.isEmpty)
+      return [
+        'Matriz',
+        'Incubatório',
+        'Fábrica de Ração',
+        'Matrizeiro Esmeraldas',
+        'Matrizeiro C. do Cajuru',
+        'Armazém de Grãos',
+        'Araguari',
+        'Teste',
+      ]; // Fallback de segurança
+    return _units.map((u) => u.name).toList();
+  }
+
+  List<String> get uniformTypes {
+    if (_selectedUnit == null || _units.isEmpty)
+      return ['Administrativo', 'Uniforme Branco'];
+    final u = _units.firstWhere(
+      (unit) => unit.name == _selectedUnit,
+      orElse: () => UnitConfig(name: _selectedUnit!, uniforms: []),
+    );
+    return u.uniforms.isNotEmpty
+        ? u.uniforms
+        : ['Administrativo', 'Uniforme Branco'];
+  }
+
+  bool get isTextToSpeechEnabled => _isTextToSpeechEnabled;
+
+  // --- FUNÇÕES DO ADM PARA PAINEL ---
+  void toggleTextToSpeech(bool value) {
+    _isTextToSpeechEnabled = value;
+    saveAdminSettings();
+    notifyListeners();
+  }
+
+  void addUnit(String name, {List<String> uniforms = const []}) {
+    _units.add(UnitConfig(name: name, uniforms: uniforms));
+    saveAdminSettings();
+    notifyListeners();
+  }
+
+  void removeUnit(String name) {
+    _units.removeWhere((u) => u.name == name);
+    if (_selectedUnit == name)
+      _selectedUnit = null; // Reseta se apagar a unidade atual
+    saveAdminSettings();
+    notifyListeners();
+  }
+
+  // --- GERENCIAMENTO DE UNIFORMES ESPECÍFICOS ---
+  void addUniformToUnit(String unitName, String uniform) {
+    final unitIndex = _units.indexWhere((u) => u.name == unitName);
+    if (unitIndex != -1 && !_units[unitIndex].uniforms.contains(uniform)) {
+      _units[unitIndex].uniforms.add(uniform);
+      saveAdminSettings();
+      notifyListeners();
+    }
+  }
+
+  void removeUniformFromUnit(String unitName, String uniform) {
+    final unitIndex = _units.indexWhere((u) => u.name == unitName);
+    if (unitIndex != -1) {
+      _units[unitIndex].uniforms.remove(uniform);
+      saveAdminSettings();
+      notifyListeners();
+    }
+  }
 
   String? _selectedUnit; // Unidade selecionada
   String? _selectedUniformType; // Tipo de uniforme selecionado
@@ -311,7 +526,9 @@ class AppData extends ChangeNotifier {
     'fura olho',
     'furico',
     'furustreca',
+    'gay',
     'gabiru',
+    'gostozuda',
     'gostozudas',
     'gota',
     'gozada',
@@ -477,6 +694,7 @@ class AppData extends ChangeNotifier {
     'tarado',
     'tchaca',
     'tcheca',
+    'tchola',
     'tchonga',
     'tchuchuca',
     'tchutchuca',
@@ -570,7 +788,7 @@ class AppData extends ChangeNotifier {
         .replaceAll(RegExp(r'[8ß]'), 'b')
         .replaceAll(RegExp(r'[¢<\[]'), 'c')
         .replaceAll(RegExp(r'[3£€]'), 'e')
-        .replaceAll(RegExp(r'[1!|]'), 'i')
+        .replaceAll(RegExp(r'[1!l|]'), 'i')
         .replaceAll(RegExp(r'[0*]'), 'o')
         .replaceAll(RegExp(r'[5$§]'), 's')
         .replaceAll(RegExp(r'[7\+]'), 't')
@@ -889,6 +1107,9 @@ class AppData extends ChangeNotifier {
     // Tenta pedir permissão logo ao abrir
     await _requestStoragePermission();
 
+    // Carrega as configurações dinâmicas do ADM criadas no painel
+    await loadAdminSettings();
+
     // Verifica se é a primeira vez (lógica do tutorial/unidade)
     await _checkFirstTimeOpen();
   }
@@ -907,6 +1128,55 @@ class AppData extends ChangeNotifier {
     if (await Permission.storage.isDenied) {
       await Permission.storage.request();
     }
+  }
+
+  // ===============================================================
+  // PERSISTÊNCIA DAS CONFIGURAÇÕES DO ADM
+  // ===============================================================
+  Future<void> saveAdminSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      'adm_units',
+      jsonEncode(_units.map((u) => u.toJson()).toList()),
+    );
+    await prefs.setBool('adm_tts_enabled', _isTextToSpeechEnabled);
+    await prefs.setString('adm_title_1', _restaurantTitle); // Salva Título 1
+    await prefs.setString('adm_title_2', _orgTitle); // Salva Título 2
+  }
+
+  Future<void> loadAdminSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    _isTextToSpeechEnabled = prefs.getBool('adm_tts_enabled') ?? false;
+    _restaurantTitle =
+        prefs.getString('adm_title_1') ?? 'Qual sua experiência geral?';
+    _orgTitle =
+        prefs.getString('adm_title_2') ??
+        'Qual a sua experiência geral com a ambientação da empresa?';
+
+    final unitsRaw = prefs.getString('adm_units');
+    if (unitsRaw != null) {
+      final List decoded = jsonDecode(unitsRaw);
+      _units = decoded.map((item) => UnitConfig.fromJson(item)).toList();
+    } else {
+      // Se for a primeiríssima vez que o tablet roda o app, cria as unidades padrão
+      _units = [
+        UnitConfig(
+          name: 'Matriz',
+          uniforms: ['Administrativo', 'Uniforme Branco'],
+        ),
+        UnitConfig(name: 'Incubatório'),
+        UnitConfig(name: 'Fábrica de Ração'),
+        UnitConfig(name: 'Matrizeiro Esmeraldas'),
+        UnitConfig(name: 'Matrizeiro C. do Cajuru'),
+        UnitConfig(name: 'Armazém de Grãos'),
+        UnitConfig(name: 'Fábrica de Ração'),
+        UnitConfig(name: 'Araguari'),
+        UnitConfig(name: 'Teste'),
+      ];
+      await saveAdminSettings();
+    }
+    notifyListeners();
   }
 
   int? _customTimeout;
@@ -956,35 +1226,43 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  // SELECIONA UMA UNIDADE
-  Future<void> selectUnit(String unit) async {
-    _selectedUnit = unit;
+  // SELECIONA UMA UNIDADE (DINÂMICO)
+  Future<void> selectUnit(String unitName) async {
+    _selectedUnit = unitName;
 
-    // SE A UNIDADE FOR "MATRIZ", MOSTRA SELEÇÃO DE UNIFORME
-    if (unit == 'Matriz') {
+    // Busca a configuração da unidade escolhida para ver se ela tem uniformes
+    final unitConfig = _units.firstWhere(
+      (u) => u.name == unitName,
+      orElse: () => UnitConfig(name: unitName),
+    );
+
+    // SE A UNIDADE TIVER UNIFORMES, MOSTRA A TELA DE SELEÇÃO DE UNIFORME
+    if (unitConfig.uniforms.isNotEmpty) {
       _showUnitSelection = false;
       _showUniformSelection = true;
     } else {
-      // Para outras unidades, vai direto para o app
+      // Para unidades SEM uniforme, vai direto para o app
       _showUnitSelection = false;
       _showUniformSelection = false;
+      _selectedUniformType = null; // Limpa resquícios
 
       // Salva a unidade selecionada
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('selected_unit', unit);
+      await prefs.setString('selected_unit', unitName);
+      await prefs.remove('selected_uniform_type');
     }
 
     notifyListeners();
   }
 
-  // SELECIONA UM TIPO DE UNIFORME
+  // SELECIONA UM TIPO DE UNIFORME DINÂMICO
   Future<void> selectUniformType(String uniformType) async {
     _selectedUniformType = uniformType;
     _showUniformSelection = false;
 
-    // Salva as preferências
+    // Salva as preferências (usando a unidade que já foi selecionada no passo anterior)
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('selected_unit', 'Matriz');
+    await prefs.setString('selected_unit', _selectedUnit ?? '');
     await prefs.setString('selected_uniform_type', uniformType);
 
     notifyListeners();
@@ -1004,9 +1282,15 @@ class AppData extends ChangeNotifier {
     notifyListeners();
   }
 
-  // VOLTAR NA TELA DE CONFIGURAÇÃO
+  // VOLTAR NA TELA DE CONFIGURAÇÃO (DINÂMICO)
   void goBackToPreviousSetupStep() {
-    if (_selectedUnit == 'Matriz') {
+    final unitConfig = _units.firstWhere(
+      (u) => u.name == _selectedUnit,
+      orElse: () => UnitConfig(name: _selectedUnit ?? ''),
+    );
+
+    // Se a unidade selecionada tiver uniformes, volta para a tela de uniformes
+    if (unitConfig.uniforms.isNotEmpty) {
       _showUniformSelection = true;
     } else {
       _showUnitSelection = true;
@@ -1022,7 +1306,8 @@ class AppData extends ChangeNotifier {
 
   // MÉTODO PARA OBTER O NOME COMPLETO DA UNIDADE
   String getFullUnitName() {
-    if (_selectedUnit == 'Matriz' && _selectedUniformType != null) {
+    // Removida a trava "&& _selectedUnit == 'Matriz'"
+    if (_selectedUniformType != null) {
       return '$_selectedUnit - $_selectedUniformType';
     }
     return _selectedUnit ?? 'Não definida';
@@ -1135,7 +1420,7 @@ class AppData extends ChangeNotifier {
     saveDataToCSV();
 
     // NOVA LINHA: Envia para o PC
-    _sendDataToComputer(newRecord);
+    // _sendDataToComputer(newRecord);
   }
 
   // ATUALIZA O ÚLTIMO REGISTRO SALVO
@@ -1191,7 +1476,7 @@ class AppData extends ChangeNotifier {
     saveDataToCSV();
 
     // NOVA LINHA: Envia a avaliação atualizada para o PC
-    _sendDataToComputer(lastRecord);
+    // _sendDataToComputer(lastRecord);
   }
 
   // Método para classificar o feedback (usado no _sendRating)
@@ -1257,20 +1542,20 @@ class AppData extends ChangeNotifier {
 
   // Converte o Nome da Refeição de volta para o ID (para carregar o CSV corretamente)
   int _getShiftIdByName(String name) {
-    // Normaliza para string caso venha algum lixo
-    final normalized = name.trim();
+    // Normaliza para letras minúsculas tirando espaços extras
+    final normalized = name.trim().toLowerCase();
 
-    if (normalized == 'Café da Manhã') return 1;
-    if (normalized == 'Almoço') return 2;
-    if (normalized == 'Café da Tarde') return 3;
-    if (normalized == 'Jantar') return 4;
-    if (normalized == 'Ceia') return 5;
+    // Filtro inteligente por aproximação (evita quebra por acentuação como ç ou ã)
+    if (normalized.contains('manh') || normalized.contains('manha')) return 1;
+    if (normalized.contains('almo') || normalized.contains('almoco')) return 2;
+    if (normalized.contains('tarde')) return 3;
+    if (normalized.contains('jantar')) return 4;
+    if (normalized.contains('ceia')) return 5;
 
-    // Tenta converter se for número (compatibilidade com arquivos antigos)
     final asNumber = int.tryParse(normalized);
     if (asNumber != null) return asNumber;
 
-    return 1; // Padrão se não encontrar
+    return 1; // Padrão de segurança
   }
 
   // ===============================================================
@@ -1299,8 +1584,11 @@ class AppData extends ChangeNotifier {
   // }
 
   Future<String> _getFilePath() async {
-    // Caminho padrão da pasta pública de Downloads no Android
-    return '/storage/emulated/0/Download/feedbacks_costafoods_$appFunctionality.csv';
+    // Retorna o diretório interno privado do aplicativo (Sandbox de alta segurança)
+    final directory = await getApplicationDocumentsDirectory();
+
+    // Concatena com o nome unificado da unidade/funcionalidade
+    return '${directory.path}/$_dbFileName';
   }
 
   Future<void> saveDataToCSV() async {
@@ -1396,9 +1684,23 @@ class AppData extends ChangeNotifier {
     ).convert(csvString);
     allEvaluationRecords.clear();
 
+    // TRAVA ANTI-DUPLICAÇÃO DE REGISTROS NA LEITURA
+    final Set<String> timestampsProcessados = {};
+
     // Pula o cabeçalho (linha 0)
     for (int i = 1; i < csvData.length; i++) {
       final row = csvData[i];
+
+      // Se a linha não tiver dados suficientes, ignora
+      if (row.isEmpty || row.length < 2) continue;
+
+      final String timestampAtual = row[1].toString().trim();
+
+      // Se já carregamos uma avaliação com exatamente esse timestamp, ignoramos a cópia!
+      if (timestampsProcessados.contains(timestampAtual)) {
+        continue;
+      }
+      timestampsProcessados.add(timestampAtual);
 
       // LÊ O NOVO FORMATO (13 COLUNAS)
       if (row.length >= 12) {
@@ -1492,7 +1794,7 @@ class AppData extends ChangeNotifier {
   // MÉTODOS PARA FILTRAR POR DIA ATUAL
   // ===============================================================
 
-  // Método para obter apenas as avaliações do dia atual
+  // MÉTODO FILTRAR POR DIA ATUAL (CORRIGIDO PARA AMBIENTAÇÃO)
   List<Map<String, dynamic>> getTodayEvaluationRecords(int shift) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -1504,7 +1806,12 @@ class AppData extends ChangeNotifier {
         recordDate.month,
         recordDate.day,
       );
-      return recordDay == today && record['turno'] == shift;
+
+      // SE FOR AMBIENTAÇÃO, IGNORA O TURNO DO RELÓGIO E TRAZ TUDO
+      final bool shiftMatches = appFunctionality == 2
+          ? true
+          : (record['turno'] == shift);
+      return recordDay == today && shiftMatches;
     }).toList();
   }
 
@@ -1555,13 +1862,11 @@ class AppData extends ChangeNotifier {
   // MÉTODOS PARA ÚLTIMOS 7 DIAS
   // ===============================================================
 
-  // Método para obter avaliações dos últimos 7 dias (ontem + 6 dias anteriores)
+  // MÉTODO AVALIAÇÕES ÚLTIMOS 7 DIAS (CORRIGIDO PARA AMBIENTAÇÃO)
   List<Map<String, dynamic>> getLast7DaysEvaluationRecords(int shift) {
     final now = DateTime.now();
     final yesterday = now.subtract(const Duration(days: 1));
-    final sevenDaysAgo = yesterday.subtract(
-      const Duration(days: 6),
-    ); // ontem - 6 dias = 7 dias no total
+    final sevenDaysAgo = yesterday.subtract(const Duration(days: 6));
 
     return allEvaluationRecords.where((record) {
       final recordDate = DateTime.parse(record['timestamp']);
@@ -1571,12 +1876,15 @@ class AppData extends ChangeNotifier {
         recordDate.day,
       );
 
-      // MUDE: Inclui de sevenDaysAgo até yesterday (exclui hoje)
+      // SE FOR AMBIENTAÇÃO, IGNORA O TURNO E CONSIDERA O DIA COMPLETO
+      final bool shiftMatches = appFunctionality == 2
+          ? true
+          : (record['turno'] == shift);
       return (recordDay.isAfter(
                 sevenDaysAgo.subtract(const Duration(days: 1)),
               ) &&
               recordDay.isBefore(yesterday.add(const Duration(days: 1)))) &&
-          record['turno'] == shift;
+          shiftMatches;
     }).toList();
   }
 
@@ -1965,7 +2273,10 @@ class AppData extends ChangeNotifier {
       }
 
       csvData.add([
-        getFullUnitName(),
+        // CORRIGIDO: Usa a unidade que estava ativa no momento da avaliação!
+        record['unidade_csv']?.toString().isNotEmpty == true
+            ? record['unidade_csv']
+            : getFullUnitName(),
         record['timestamp'],
         turno,
         '${record['estrelas']}',
@@ -2205,52 +2516,16 @@ class AppData extends ChangeNotifier {
   //   }
   // }
 
-  // SALVAR NO DISPOSITIVO
+  // SALVAR NO ARMAZENAMENTO PRIVADO E SEGURO DO APLICATIVO
   Future<void> _saveToDownloads(BuildContext context, String csvData) async {
-    // try {
-    //   // 1. Gera o nome do arquivo com timestamp (mantendo sua lógica original)
-    //   final timestamp = DateTime.now().toString().replaceAll(
-    //     RegExp(r'[^0-9]'),
-    //     '_',
-    //   );
-    //   final fileName = '${_exportPrefix}_$timestamp.csv';
-
-    //   // 2. CHAMA O HELPER MULTIPLATAFORMA
-    //   // No Android: Vai salvar silenciosamente na pasta Downloads.
-    //   // Na Web: Vai abrir a janela padrão do navegador para o usuário baixar.
-    //   await file_helper.saveFile(fileName, csvData);
-
-    //   if (context.mounted) {
-    //     ScaffoldMessenger.of(context).showSnackBar(
-    //       SnackBar(
-    //         content: const Text('Arquivo exportado com sucesso!'),
-    //         backgroundColor: Colors.green,
-    //         duration: const Duration(seconds: 3),
-    //         // Nota: O botão de "Abrir" foi removido pois a forma de abrir
-    //         // varia muito entre Web e Mobile.
-    //       ),
-    //     );
-    //   }
-
-    //   debugPrint('✔️ Arquivo enviado para exportação: $fileName');
-    // } catch (e) {
-    //   if (context.mounted) {
-    //     ScaffoldMessenger.of(context).showSnackBar(
-    //       SnackBar(
-    //         content: Text('Erro ao salvar o arquivo: $e'),
-    //         backgroundColor: Colors.red,
-    //       ),
-    //     );
-    //   }
-    // }
     try {
-      // Mas usamos a lógica nova do path_provider aqui dentro!
-      final directory = await getExternalStorageDirectory();
-      if (directory == null) throw Exception("Armazenamento indisponível");
+      // 1. Aponta estritamente para o cofre interno do app
+      final directory = await getApplicationDocumentsDirectory();
 
-      final filePath = '${directory.path}/feedbacks_costafoods.csv';
+      // 2. Utiliza o nome de arquivo unificado inteligente
+      final filePath = '${directory.path}/$_dbFileName';
       final file = File(filePath);
-      final bom = '\uFEFF';
+      const bom = '\uFEFF';
 
       await file.writeAsString(
         bom + csvData,
@@ -2260,15 +2535,19 @@ class AppData extends ChangeNotifier {
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Banco de dados local atualizado com sucesso!'),
+          SnackBar(
+            content: Text(
+              'Banco de dados salvo na área segura do app: $_dbFileName',
+            ),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
 
-      debugPrint('✔️ Arquivo local sobrescrito de forma segura em: $filePath');
+      debugPrint(
+        '✔️ Arquivo local gravado com segurança na Sandbox em: $filePath',
+      );
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2280,7 +2559,6 @@ class AppData extends ChangeNotifier {
       }
     }
   }
-
   // SALVAR NA PASTA DE DOCUMENTOS (fallback)
   // Future<void> _saveToDocuments(BuildContext context, String csvData) async {
   //   try {
@@ -2588,14 +2866,17 @@ Arquivo contém dados completos das avaliações dos clientes.
       // ==============================================================
 
       csvData.add([
-        getFullUnitName(), // USA O NOME COMPLETO DA UNIDADE
+        // CORRIGIDO: Usa a unidade que estava ativa no momento da avaliação!
+        record['unidade_csv']?.toString().isNotEmpty == true
+            ? record['unidade_csv']
+            : getFullUnitName(),
         record['timestamp'],
         turno,
         '${record['estrelas']}',
         category,
         satisfactionStatus,
-        refPos, // Entra no lugar do record['positivos']
-        refNeg, // Entra no lugar do record['negativos']
+        refPos,
+        refNeg,
         serPos,
         serNeg,
         ambPos,
@@ -2735,22 +3016,23 @@ Arquivo contém dados completos das avaliações dos clientes.
   //   }
   // }
 
-  // MÉTODO PARA FORMATAR A UNIDADE NO CSV
+  // MÉTODO PARA FORMATAR A UNIDADE NO CSV (CORRIGIDO)
   String _getUnitForCSV() {
-    if (_selectedUnit == 'Matriz' && _selectedUniformType != null) {
-      // PARA MATRIZ: MOSTRA APENAS A COR DO UNIFORME
-      switch (_selectedUniformType) {
-        case 'Uniforme Branco':
-          return 'Branco';
-        case 'Uniforme Colorido':
-          return 'Colorido';
-        case 'Administrativo':
-          return 'Admin';
-        default:
-          return _selectedUniformType!;
-      }
+    String unidade = _selectedUnit ?? 'Não definida';
+
+    if (_selectedUniformType != null && _selectedUniformType!.isNotEmpty) {
+      String uniforme = _selectedUniformType!;
+      if (uniforme == 'Uniforme Branco')
+        uniforme = 'Branco';
+      else if (uniforme == 'Uniforme Colorido')
+        uniforme = 'Colorido';
+      else if (uniforme == 'Administrativo')
+        uniforme = 'Admin';
+
+      return '$unidade - $uniforme';
     }
-    return _selectedUnit ?? 'Não definida';
+
+    return unidade;
   }
 
   // NOVA FUNÇÃO: Calcula o turno ao vivo no momento exato do clique
@@ -3081,91 +3363,115 @@ class AppWithUnitSelection extends StatelessWidget {
   Widget _buildUnitSelectionDialog(BuildContext context, AppData appData) {
     return Scaffold(
       backgroundColor: Colors.black54,
+
+      // ==========================================
+      // A "CAMADA ACIMA": BOTÃO FLUTUANTE ADM
+      // ==========================================
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _requireAdminPassword(
+          context,
+          () => _showUnitAdminMenu(context, appData),
+        ),
+        icon: const Icon(Icons.admin_panel_settings),
+        label: const Text('Adicionar/remover unidade'),
+        backgroundColor: const Color.fromARGB(255, 111, 136, 63),
+        foregroundColor: Colors.white,
+      ),
+
       body: Center(
-        child: Container(
-          width: MediaQuery.of(context).size.width * 0.9,
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.3),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.business_rounded,
-                size: 64,
-                color: const Color.fromARGB(255, 111, 136, 63),
-              ),
-              const SizedBox(height: 16),
-
-              Text(
-                'Bem-vindo ao Costa Foods Feedbacks!',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: const Color.fromARGB(255, 111, 136, 63),
+        // ==========================================
+        // PROTEÇÃO ANTI-OVERFLOW: ROLAGEM AUTOMÁTICA
+        // ==========================================
+        child: SingleChildScrollView(
+          child: Container(
+            width: MediaQuery.of(context).size.width * 0.9,
+            padding: const EdgeInsets.all(24),
+            margin: const EdgeInsets.symmetric(
+              vertical: 20,
+            ), // Margem para não colar no topo/fundo
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
                 ),
-                textAlign: TextAlign.center,
-              ),
-
-              const SizedBox(height: 8),
-
-              Text(
-                'Selecione a unidade onde serão feitas as avaliações:',
-                style: TextStyle(fontSize: 16, color: Colors.grey[700]),
-                textAlign: TextAlign.center,
-              ),
-
-              const SizedBox(height: 24),
-
-              ...appData.companyUnits.map((unit) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: ElevatedButton(
-                    onPressed: () => appData.selectUnit(unit),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color.fromARGB(255, 111, 136, 63),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 16,
-                        horizontal: 20,
-                      ),
-                      minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: Text(
-                      unit,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.business_rounded,
+                  size: 64,
+                  color: Color.fromARGB(255, 111, 136, 63),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Bem-vindo ao Costa Foods Feedbacks!',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Color.fromARGB(255, 111, 136, 63),
                   ),
-                );
-              }).toList(),
-
-              const SizedBox(height: 16),
-
-              Text(
-                'Esta seleção será salva e usada em todas as avaliações.',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                  fontStyle: FontStyle.italic,
+                  textAlign: TextAlign.center,
                 ),
-                textAlign: TextAlign.center,
-              ),
-            ],
+                const SizedBox(height: 8),
+                Text(
+                  'Selecione a unidade onde serão feitas as avaliações:',
+                  style: TextStyle(fontSize: 16, color: Colors.grey[700]),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+
+                // GERA OS BOTÕES DAS UNIDADES DINAMICAMENTE
+                ...appData.companyUnits.map((unit) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: ElevatedButton(
+                      onPressed: () => appData.selectUnit(unit),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color.fromARGB(
+                          255,
+                          111,
+                          136,
+                          63,
+                        ),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 16,
+                          horizontal: 20,
+                        ),
+                        minimumSize: const Size(double.infinity, 50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        unit,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+
+                const SizedBox(height: 16),
+                Text(
+                  'Esta seleção será salva e usada em todas as avaliações.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                    fontStyle: FontStyle.italic,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -3176,103 +3482,126 @@ class AppWithUnitSelection extends StatelessWidget {
   Widget _buildUniformSelectionDialog(BuildContext context, AppData appData) {
     return Scaffold(
       backgroundColor: Colors.black54,
+
+      // ==========================================
+      // A "CAMADA ACIMA": BOTÃO FLUTUANTE ADM
+      // ==========================================
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          final currentUnit = appData.selectedUnit ?? 'Matriz';
+          _requireAdminPassword(
+            context,
+            () => _showUniformManagementScreen(context, appData, currentUnit),
+          );
+        },
+        icon: const Icon(Icons.settings),
+        label: const Text('Uniformes'),
+        backgroundColor: const Color.fromARGB(255, 111, 136, 63),
+        foregroundColor: Colors.white,
+      ),
+
       body: Center(
-        child: Container(
-          width: MediaQuery.of(context).size.width * 0.9,
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.3),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.people_alt_rounded,
-                size: 64,
-                color: const Color.fromARGB(255, 111, 136, 63),
-              ),
-              const SizedBox(height: 16),
-
-              Text(
-                'Seleção de Uniforme - Matriz',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: const Color.fromARGB(255, 111, 136, 63),
+        // ==========================================
+        // PROTEÇÃO ANTI-OVERFLOW: ROLAGEM AUTOMÁTICA
+        // ==========================================
+        child: SingleChildScrollView(
+          child: Container(
+            width: MediaQuery.of(context).size.width * 0.9,
+            padding: const EdgeInsets.all(24),
+            margin: const EdgeInsets.symmetric(vertical: 20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
                 ),
-                textAlign: TextAlign.center,
-              ),
-
-              const SizedBox(height: 8),
-
-              Text(
-                'Selecione o tipo de uniforme da equipe:',
-                style: TextStyle(fontSize: 16, color: Colors.grey[700]),
-                textAlign: TextAlign.center,
-              ),
-
-              const SizedBox(height: 24),
-
-              ...appData.uniformTypes.map((uniformType) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: ElevatedButton(
-                    onPressed: () => appData.selectUniformType(uniformType),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color.fromARGB(255, 111, 136, 63),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 16,
-                        horizontal: 20,
-                      ),
-                      minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: Text(
-                      uniformType,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.people_alt_rounded,
+                  size: 64,
+                  color: Color.fromARGB(255, 111, 136, 63),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Seleção de Uniforme - ${appData.selectedUnit}',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Color.fromARGB(255, 111, 136, 63),
                   ),
-                );
-              }).toList(),
-
-              const SizedBox(height: 16),
-
-              OutlinedButton(
-                onPressed: () {
-                  // Usa métodos públicos do AppData
-                  appData._showUnitSelection = true;
-                  appData._showUniformSelection = false;
-                  appData.notifyListeners();
-                },
-                child: const Text('Voltar para seleção de unidade'),
-              ),
-
-              const SizedBox(height: 8),
-
-              Text(
-                'Esta seleção será salva e usada em todas as avaliações da Matriz.',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                  fontStyle: FontStyle.italic,
+                  textAlign: TextAlign.center,
                 ),
-                textAlign: TextAlign.center,
-              ),
-            ],
+                const SizedBox(height: 8),
+                Text(
+                  'Selecione o tipo de uniforme da equipe:',
+                  style: TextStyle(fontSize: 16, color: Colors.grey[700]),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+
+                // GERA OS BOTÕES DOS UNIFORMES
+                ...appData.uniformTypes.map((uniformType) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: ElevatedButton(
+                      onPressed: () => appData.selectUniformType(uniformType),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color.fromARGB(
+                          255,
+                          111,
+                          136,
+                          63,
+                        ),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 16,
+                          horizontal: 20,
+                        ),
+                        minimumSize: const Size(double.infinity, 50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        uniformType,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+
+                const SizedBox(height: 16),
+                OutlinedButton(
+                  onPressed: () {
+                    // Usa métodos públicos do AppData
+                    appData._showUnitSelection = true;
+                    appData._showUniformSelection = false;
+                    appData.notifyListeners();
+                  },
+                  child: const Text('Voltar para seleção de unidade'),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Esta seleção será salva e usada em todas as avaliações desta unidade.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                    fontStyle: FontStyle.italic,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -3290,6 +3619,329 @@ class AppWithUnitSelection extends StatelessWidget {
       now: now,
       firstDate: firstDate,
       lastDate: lastDate,
+    );
+  }
+
+  // =================================================================
+  // FLUXOS DE GERENCIAMENTO DO ADM (PROTEGIDOS POR SENHA)
+  // =================================================================
+
+  void _requireAdminPassword(BuildContext context, VoidCallback onSuccess) {
+    final TextEditingController passwordController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(
+          'Acesso Restrito (ADM)',
+          style: TextStyle(color: Color.fromARGB(255, 111, 136, 63)),
+        ),
+        content: TextField(
+          controller: passwordController,
+          obscureText: true,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Senha Numérica',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              // Verifica a mesma senha das estatísticas (986532)
+              var bytes = utf8.encode(passwordController.text);
+              var hash = sha256.convert(bytes).toString();
+              if (hash ==
+                  "7f22c371df7690c941e458b6f9f325635cd4b69407076a7603aa8df8e1df0f9e") {
+                Navigator.pop(context); // Fecha o dialog de senha
+                onSuccess(); // Executa a ação solicitada
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Senha Incorreta!'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            child: const Text('Confirmar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- FLUXO DE CRIAR UNIDADE (COM PERGUNTA DE UNIFORME) ---
+  void _showAddUnitFlow(BuildContext context, AppData appData) {
+    final TextEditingController unitController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Nova Unidade'),
+        content: TextField(
+          controller: unitController,
+          decoration: const InputDecoration(
+            labelText: 'Nome da Unidade',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final String unitName = unitController.text.trim();
+              if (unitName.isNotEmpty) {
+                Navigator.pop(context);
+                _promptUniformSetup(
+                  context,
+                  appData,
+                  unitName,
+                ); // Dispara a notificação de uniforme
+              }
+            },
+            child: const Text('Avançar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _promptUniformSetup(
+    BuildContext context,
+    AppData appData,
+    String unitName,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Configuração de Uniformes'),
+        content: Text(
+          'A unidade "$unitName" necessita de separação por tipos de uniforme?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              appData.addUnit(
+                unitName,
+                uniforms: [],
+              ); // Cria unidade sem uniformes (Pula)
+              Navigator.pop(context);
+            },
+            child: const Text('Não / Pular'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              appData.addUnit(unitName, uniforms: []); // Cria a unidade vazia
+              Navigator.pop(context);
+              _showUniformManagementScreen(
+                context,
+                appData,
+                unitName,
+              ); // Abre gerenciador de uniformes
+            },
+            child: const Text('Sim, Configurar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showUniformManagementScreen(
+    BuildContext context,
+    AppData appData,
+    String unitName,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final TextEditingController uniformController =
+              TextEditingController();
+          final unit = appData.units.firstWhere(
+            (u) => u.name == unitName,
+            orElse: () => UnitConfig(name: ''),
+          );
+
+          return AlertDialog(
+            title: Text('Uniformes: $unitName'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: uniformController,
+                          decoration: const InputDecoration(
+                            hintText: 'Ex: Administrativo, Operacional',
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(
+                          Icons.add_box,
+                          color: Colors.green,
+                          size: 32,
+                        ),
+                        onPressed: () {
+                          if (uniformController.text.trim().isNotEmpty) {
+                            appData.addUniformToUnit(
+                              unitName,
+                              uniformController.text.trim(),
+                            );
+                            uniformController.clear();
+                            setDialogState(() {}); // Atualiza a lista na tela
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (unit.uniforms.isEmpty)
+                    const Text('Nenhum uniforme cadastrado.'),
+                  Container(
+                    constraints: const BoxConstraints(
+                      maxHeight: 250,
+                    ), // Evita que a lista estoure a tela
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: unit.uniforms.length,
+                      itemBuilder: (context, idx) => ListTile(
+                        title: Text(unit.uniforms[idx]),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          onPressed: () {
+                            appData.removeUniformFromUnit(
+                              unitName,
+                              unit.uniforms[idx],
+                            );
+                            setDialogState(() {});
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Concluir'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _showRemoveUnitFlow(BuildContext context, AppData appData) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remover Unidade'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: appData.units.length,
+            itemBuilder: (context, idx) => ListTile(
+              title: Text(appData.units[idx].name),
+              trailing: IconButton(
+                icon: const Icon(Icons.delete, color: Colors.red),
+                onPressed: () {
+                  appData.removeUnit(appData.units[idx].name);
+                  Navigator.pop(
+                    context,
+                  ); // Fecha para recarregar a tela principal
+                },
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fechar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- ABAS FLUTUANTES (BOTTOM SHEETS) DO ADM ---
+  void _showUnitAdminMenu(BuildContext context, AppData appData) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true, // Permite que a aba ocupe o tamanho necessário
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Gerenciamento de Unidades (ADM)',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Color.fromARGB(255, 111, 136, 63),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context); // Fecha a aba
+                  _showAddUnitFlow(
+                    context,
+                    appData,
+                  ); // Chama a função que já criamos
+                },
+                icon: const Icon(Icons.add_business),
+                label: const Text('Adicionar Nova Unidade'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green.shade700,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _showRemoveUnitFlow(context, appData);
+                },
+                icon: const Icon(Icons.domain_disabled),
+                label: const Text('Remover Unidade Existente'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Fechar Aba'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -4500,10 +5152,8 @@ class _AppTabsControllerState extends State<AppTabsController>
                   ),
                   if (appData.selectedUnit != null)
                     Text(
-                      // SE FOR RESTAURANTE (1), MOSTRA COM UNIFORME. SE FOR AMBIENTAÇÃO (2), MOSTRA SÓ A UNIDADE.
-                      appData.appFunctionality == 1
-                          ? appData.getFullUnitName()
-                          : appData.selectedUnit!,
+                      // AGORA MOSTRA UNIDADE E UNIFORME PARA TODAS AS FUNCIONALIDADES
+                      appData.getFullUnitName(),
                       style: const TextStyle(
                         fontSize: 12.0,
                         color: Colors.white70,
@@ -4514,7 +5164,23 @@ class _AppTabsControllerState extends State<AppTabsController>
               ),
               backgroundColor: const Color.fromARGB(255, 111, 136, 63),
               elevation: 4,
-              actions: _selectedIndex == 1 ? [] : [],
+              actions: _selectedIndex == 2
+                  ? [
+                      IconButton(
+                        icon: const Icon(Icons.settings, color: Colors.white),
+                        onPressed: () {
+                          // Abre o painel do ADM
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  const AdminConfigurationPanel(),
+                            ),
+                          );
+                        },
+                      ),
+                    ]
+                  : [],
             ),
             body: Stack(
               children: [
@@ -5251,14 +5917,46 @@ class _RatingScreenState extends State<RatingScreen> {
                           ),
                         ),
                       ),
-                      child: Text(
-                        'VOLTAR PARA\nTELA INICIAL',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: isSmallScreen ? 15 : 18,
-                          fontWeight: FontWeight.bold,
-                          height: 1.2,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'VOLTAR PARA\nTELA INICIAL',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: isSmallScreen ? 15 : 18,
+                              fontWeight: FontWeight.bold,
+                              height: 1.2,
+                            ),
+                          ),
+
+                          // ALTIFALANTE DO BOTÃO VOLTAR
+                          if (Provider.of<AppData>(
+                            context,
+                          ).isTextToSpeechEnabled)
+                            GestureDetector(
+                              onTap: () {
+                                // Lê a frase sem a quebra de linha para soar natural
+                                Provider.of<AppData>(
+                                  context,
+                                  listen: false,
+                                ).speakPhrase('Voltar para a tela inicial');
+
+                                // Reinicia as barras de tempo para o utilizador não ser interrompido
+                                _resetLocalTimer();
+                                _resetParentTimer(context);
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.only(left: 12.0),
+                                child: Icon(
+                                  Icons.volume_up,
+                                  size: isSmallScreen ? 20 : 26,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ),
@@ -5317,14 +6015,46 @@ class _RatingScreenState extends State<RatingScreen> {
                       // Remove efeito de elevação se estiver desabilitado
                       elevation: isButtonEnabled ? 2 : 0,
                     ),
-                    child: Text(
-                      'Enviar feedback adicional',
-                      style: TextStyle(
-                        fontSize: isSmallScreen ? 18 : 22,
-                        color: isButtonEnabled
-                            ? Colors.white
-                            : Colors.grey.shade700,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Enviar feedback adicional',
+                          style: TextStyle(
+                            fontSize: isSmallScreen ? 18 : 22,
+                            color: isButtonEnabled
+                                ? Colors.white
+                                : Colors.grey.shade700,
+                          ),
+                        ),
+
+                        // ALTIFALANTE DO BOTÃO ENVIAR
+                        if (Provider.of<AppData>(context).isTextToSpeechEnabled)
+                          GestureDetector(
+                            onTap: () {
+                              Provider.of<AppData>(
+                                context,
+                                listen: false,
+                              ).speakPhrase('Enviar feedback adicional');
+
+                              // Reinicia as barras de tempo
+                              _resetLocalTimer();
+                              _resetParentTimer(context);
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 12.0),
+                              child: Icon(
+                                Icons.volume_up,
+                                size: isSmallScreen ? 22 : 28,
+                                // A cor do ícone acompanha a cor do texto (cinza se desativado, branco se ativado)
+                                color: isButtonEnabled
+                                    ? Colors.white
+                                    : Colors.grey.shade700,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ),
@@ -5560,22 +6290,57 @@ class CategoryFeedbackColumn extends StatelessWidget {
             ),
           ),
 
-          // 2. MUDANÇA: Reduzi o padding horizontal para o texto respirar
+          // Redução do padding horizontal para o texto respirar
           padding: const EdgeInsets.symmetric(horizontal: 4.0),
           alignment: Alignment.center,
 
-          // 3. MUDANÇA: FittedBox impede que o texto quebre o layout
+          // FittedBox com Row para incluir o ícone do Alto-falante
           child: FittedBox(
             fit: BoxFit.scaleDown,
-            child: Text(
-              formattedPhrase,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: isSmallScreen ? 13 : (isLargeScreen ? 16 : 15),
-                color: isSelected ? Colors.white : unselectedTextColor,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                height: 1.15, // Aproxima as linhas de texto para caber melhor
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  formattedPhrase,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: isSmallScreen ? 13 : (isLargeScreen ? 16 : 15),
+                    color: isSelected ? Colors.white : unselectedTextColor,
+                    fontWeight: isSelected
+                        ? FontWeight.w600
+                        : FontWeight.normal,
+                    height: 1.15,
+                  ),
+                ),
+
+                // SE O ADM ATIVOU, MOSTRA O ALTO-FALANTE
+                if (Provider.of<AppData>(context).isTextToSpeechEnabled)
+                  GestureDetector(
+                    onTap: () {
+                      // 1. Usa o novo motor de voz para ler a frase
+                      Provider.of<AppData>(
+                        context,
+                        listen: false,
+                      ).speakPhrase(phrase);
+
+                      // 2. Reinicia o timer oculto de inatividade global do aplicativo
+                      _resetParentTimer(context);
+
+                      // 3. Reinicia a barra visual de tempo da própria tela de feedbacks
+                      final ratingScreenState = context
+                          .findAncestorStateOfType<_RatingScreenState>();
+                      ratingScreenState?.resetTimerFromOutside();
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 6.0),
+                      child: Icon(
+                        Icons.volume_up,
+                        size: isSmallScreen ? 18 : 22,
+                        color: isSelected ? Colors.white : Colors.black54,
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
@@ -6925,23 +7690,45 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Text(
-                    // TÍTULO DINÂMICO PARA RESTAURANTE OU AMBIENTAÇÃO DE EMPRESA
-                    Provider.of<AppData>(context).appFunctionality == 1
-                        ? 'Qual sua experiência geral?' // Texto para Restaurante
-                        : 'Qual a sua experiência geral com a ambientação da empresa?', // Texto para Empresa
-                    style: TextStyle(
-                      // Ajuste opcional: Se o texto da empresa for muito longo,
-                      // você pode reduzir levemente a fonte aqui se necessário,
-                      // mas a lógica abaixo mantém o padrão original.
-                      fontSize: isSmallScreen
-                          ? 24
-                          : (isLargeScreen
-                                ? 40
-                                : 32), // Reduzi um pouquinho pois o texto novo é maior
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          // PUXA O TÍTULO QUE O ADM CONFIGUROU
+                          Provider.of<AppData>(context).currentTitle,
+                          style: TextStyle(
+                            fontSize: isSmallScreen
+                                ? 24
+                                : (isLargeScreen ? 40 : 32),
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      // SE O ADM ATIVOU, MOSTRA O ALTIFALANTE DO TÍTULO
+                      if (Provider.of<AppData>(context).isTextToSpeechEnabled)
+                        GestureDetector(
+                          onTap: () {
+                            final appData = Provider.of<AppData>(
+                              context,
+                              listen: false,
+                            );
+                            appData.speakPhrase(appData.currentTitle);
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 12.0),
+                            child: Icon(
+                              Icons.volume_up,
+                              size: isSmallScreen
+                                  ? 28
+                                  : (isLargeScreen ? 40 : 32),
+                              color: const Color.fromARGB(255, 111, 136, 63),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
 
                   // DATA RESPONSIVA
@@ -7089,6 +7876,34 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                                         : Colors.grey[700],
                                   ),
                                 ),
+
+                                // SE O ADM ATIVOU, MOSTRA O ALTIFALANTE DA AVALIAÇÃO
+                                if (Provider.of<AppData>(
+                                  context,
+                                ).isTextToSpeechEnabled)
+                                  GestureDetector(
+                                    onTap: () {
+                                      // Lê apenas o nome da avaliação (ex: "Excelente")
+                                      Provider.of<AppData>(
+                                        context,
+                                        listen: false,
+                                      ).speakPhrase(legendaAtual);
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(
+                                        left: 16.0,
+                                      ),
+                                      child: Icon(
+                                        Icons.volume_up,
+                                        size: isSmallScreen
+                                            ? 24
+                                            : (isLargeScreen ? 40 : 32),
+                                        color: isSelected
+                                            ? const Color(0xFF3F4533)
+                                            : Colors.grey[500],
+                                      ),
+                                    ),
+                                  ),
                               ],
                             ),
                           ),
@@ -7126,6 +7941,110 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ===================================================================
+// TELA DE PAINEL DO ADMINISTRADOR
+// ===================================================================
+class AdminConfigurationPanel extends StatelessWidget {
+  const AdminConfigurationPanel({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final appData = Provider.of<AppData>(context);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Painel de Controle ADM',
+          style: TextStyle(color: Colors.white),
+        ),
+        backgroundColor: const Color.fromARGB(255, 111, 136, 63),
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          // SEÇÃO DE ACESSIBILIDADE
+          Card(
+            child: SwitchListTile(
+              title: const Text('Botão de Áudio (Alto-falante)'),
+              subtitle: const Text(
+                'Exibe um ícone para ler os textos em voz alta',
+              ),
+              value: appData.isTextToSpeechEnabled,
+              onChanged: (val) => appData.toggleTextToSpeech(val),
+              activeColor: const Color.fromARGB(255, 111, 136, 63),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // SEÇÃO DE TEXTOS
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Configuração da Tela Atual',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  ListTile(
+                    title: const Text('Título da Página Inicial'),
+                    subtitle: Text(
+                      appData.currentTitle,
+                    ), // Mostra o título do ambiente que está rodando
+                    trailing: const Icon(Icons.edit, color: Colors.blue),
+                    onTap: () => _editTitleDialog(
+                      context,
+                      appData,
+                      appData.appFunctionality,
+                    ), // Envia apenas o ID do ambiente atual
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _editTitleDialog(BuildContext context, AppData appData, int funcId) {
+    final controller = TextEditingController(
+      text: funcId == 1 ? appData.restaurantTitle : appData.orgTitle,
+    );
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Editar Título Inicial'),
+        content: TextField(
+          controller: controller,
+          maxLines: 2,
+          decoration: const InputDecoration(border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              appData.updateTitle(funcId, controller.text.trim());
+              Navigator.pop(context);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color.fromARGB(255, 111, 136, 63),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
     );
   }
 }

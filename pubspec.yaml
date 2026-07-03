@@ -1,7 +1,7 @@
 name: costa_foods_feedbacks
 description: "Aplicativo para coleta de feedbacks do restaurante da CostaFoods."
 publish_to: "none"
-version: 1.0.19+20
+version: 1.0.20+21
 
 environment:
   sdk: ^3.9.2
@@ -25,6 +25,7 @@ dependencies:
   package_info_plus: ^9.0.1
   crypto: ^3.0.3
   encrypt: ^5.0.3
+  flutter_tts: ^3.8.3
   
 dev_dependencies:
   flutter_test:
