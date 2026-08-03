@@ -136,7 +136,11 @@ class AppData extends ChangeNotifier {
     // 2. Formata o nome para ser seguro em arquivos de servidor (tira acentos, espaços e deixa minúsculo)
     String nomeFormatado = nomeUnidade
         .toLowerCase()
-        .replaceAll(' - ', '-')
+        .replaceAll(
+          ' - ',
+          '_',
+        ) // Troca o separador de unidade/uniforme por underline
+        .replaceAll('-', '_') // Garante que qualquer outro hífen vire underline
         .replaceAll(' ', '_')
         .replaceAll(RegExp(r'[áàãâ]'), 'a')
         .replaceAll(RegExp(r'[éèê]'), 'e')
@@ -147,8 +151,8 @@ class AppData extends ChangeNotifier {
 
     // 3. Retorna o nome final com a unidade embutida
     return appFunctionality == 1
-        ? 'avaliacoes_restaurante-$nomeFormatado.csv'
-        : 'avaliacoes_ambientacao-$nomeFormatado.csv';
+        ? 'avaliacoes_restaurante_$nomeFormatado.csv'
+        : 'avaliacoes_ambientacao_$nomeFormatado.csv';
   }
 
   // Prefixo para os arquivos exportados/compartilhados manualmente
@@ -182,6 +186,41 @@ class AppData extends ChangeNotifier {
   // ===============================================================
   List<UnitConfig> _units = [];
   bool _isTextToSpeechEnabled = false; // Controle do Alto-falante
+
+  // --- NOVAS VARIÁVEIS DO PROTETOR DE TELA ---
+  bool _isScreensaverEnabled = true;
+  int _screensaverTimeoutSeconds = 60; // 60 segundos por padrão
+
+  bool get isScreensaverEnabled => _isScreensaverEnabled;
+  int get screensaverTimeoutSeconds => _screensaverTimeoutSeconds;
+
+  void toggleScreensaver(bool value) {
+    _isScreensaverEnabled = value;
+    saveAdminSettings();
+    notifyListeners();
+  }
+
+  void setScreensaverTimeout(int seconds) {
+    _screensaverTimeoutSeconds = seconds;
+    saveAdminSettings();
+    notifyListeners();
+  }
+
+  // NOVA VARIÁVEL: Horários de Início dos Turnos (em minutos desde a meia-noite)
+  Map<int, int> shiftStartTimes = {
+    1: 145, // 02:25 (Café da Manhã)
+    2: 585, // 09:45 (Almoço)
+    3: 827, // 13:47 (Café da Tarde)
+    4: 1150, // 19:10 (Jantar)
+    5: 1409, // 23:29 (Ceia)
+  };
+
+  // MÉTODO PARA ATUALIZAR O HORÁRIO
+  void updateShiftStartTime(int shiftId, int minutes) {
+    shiftStartTimes[shiftId] = minutes;
+    saveAdminSettings();
+    notifyListeners();
+  }
 
   // ==========================================
   // MOTOR DE VOZ (TEXT-TO-SPEECH) COM TRAVA ANTI-SPAM
@@ -413,6 +452,7 @@ class AppData extends ChangeNotifier {
     'bucetinha',
     'bucetinhas',
     'bucetonas',
+    'caceta',
     'cacete',
     'caceteiro',
     'cachuleta',
@@ -445,6 +485,7 @@ class AppData extends ChangeNotifier {
     'chereca',
     'chibata',
     'chibio',
+    'chibiu',
     'chibungo',
     'chimbica',
     'chupada',
@@ -459,6 +500,8 @@ class AppData extends ChangeNotifier {
     'cornomanso',
     'cornudo',
     'crl',
+    'cretina',
+    'cretino',
     'crossdresser',
     'cu',
     'cuecao',
@@ -469,6 +512,8 @@ class AppData extends ChangeNotifier {
     'cuzuda',
     'cuzudo',
     'dadeira',
+    'dadeiro',
+    'desgramada',
     'desgramado',
     'desgraca',
     'desgracada',
@@ -534,6 +579,7 @@ class AppData extends ChangeNotifier {
     'gozada',
     'gozadas',
     'grelao',
+    'grelo',
     'greludas',
     'gulosinha',
     'idiota',
@@ -585,6 +631,8 @@ class AppData extends ChangeNotifier {
     'miseria',
     'mizeravi',
     'mocorongo',
+    'molesta',
+    'molestia',
     'mundica',
     'nocego',
     'nojenta',
@@ -1141,7 +1189,26 @@ class AppData extends ChangeNotifier {
     );
     await prefs.setBool('adm_tts_enabled', _isTextToSpeechEnabled);
     await prefs.setString('adm_title_1', _restaurantTitle); // Salva Título 1
-    await prefs.setString('adm_title_2', _orgTitle); // Salva Título 2
+    await prefs.setString(
+      'adm_title_2',
+      _orgTitle,
+    ); // Salva Título 2// NOVA LINHA: Salva os horários dos turnos
+    await prefs.setString(
+      'adm_shift_times',
+      jsonEncode(
+        shiftStartTimes.map((key, value) => MapEntry(key.toString(), value)),
+      ),
+    );
+    // Salva os horários dos turnos
+    await prefs.setString(
+      'adm_shift_times',
+      jsonEncode(
+        shiftStartTimes.map((key, value) => MapEntry(key.toString(), value)),
+      ),
+    );
+    // Salva configurações do Protetor de Tela
+    await prefs.setBool('adm_screensaver_enabled', _isScreensaverEnabled);
+    await prefs.setInt('adm_screensaver_timeout', _screensaverTimeoutSeconds);
   }
 
   Future<void> loadAdminSettings() async {
@@ -1176,6 +1243,20 @@ class AppData extends ChangeNotifier {
       ];
       await saveAdminSettings();
     }
+
+    // Carrega os horários salvos
+    final shiftTimesRaw = prefs.getString('adm_shift_times');
+    if (shiftTimesRaw != null) {
+      final Map<String, dynamic> decoded = jsonDecode(shiftTimesRaw);
+      shiftStartTimes = decoded.map(
+        (key, value) => MapEntry(int.parse(key), value as int),
+      );
+    }
+
+    // Carrega configurações do Protetor de Tela
+    _isScreensaverEnabled = prefs.getBool('adm_screensaver_enabled') ?? true;
+    _screensaverTimeoutSeconds = prefs.getInt('adm_screensaver_timeout') ?? 60;
+
     notifyListeners();
   }
 
@@ -1403,7 +1484,7 @@ class AppData extends ChangeNotifier {
     final newRecord = {
       'timestamp': timestamp,
       'funcionalidade': appFunctionality == 1 ? 'restaurante' : 'ambientacao',
-      'turno': shift,
+      'turno': turnoExato,
       'estrelas': star,
       'satisfacao': satisfacao, // ADICIONA SATISFAÇÃO
       'positivos': positiveFeedbacks.join('; '),
@@ -3035,22 +3116,28 @@ Arquivo contém dados completos das avaliações dos clientes.
     return unidade;
   }
 
-  // NOVA FUNÇÃO: Calcula o turno ao vivo no momento exato do clique
+  // Calcula o turno ao vivo baseado nos horários configurados no painel
   int getLiveShift() {
     final now = DateTime.now();
     final int minutes = (now.hour * 60) + now.minute;
 
-    if (minutes >= 145 && minutes < 585) {
-      return 1; // Café da Manhã (02:25 até 09:44)
-    } else if (minutes >= 585 && minutes <= 826) {
-      return 2; // Almoço (09:45 até 13:46)
-    } else if (minutes >= 827 && minutes < 1150) {
-      return 3; // Café da Tarde (13:47 até 19:09)
-    } else if (minutes >= 1150 && minutes <= 1408) {
-      return 4; // Jantar (19:10 até 23:28)
-    } else {
-      return 5; // Ceia (23:29 até 02:24)
+    // Ordena os turnos pelo horário de início do menor pro maior
+    var sortedShifts = shiftStartTimes.entries.toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
+
+    // Por padrão, se o horário atual for "menor" que o primeiro turno do dia (ex: 01:00 da manhã),
+    // ele pertence ao último turno que virou a madrugada (A Ceia)
+    int activeShift = sortedShifts.last.key;
+
+    for (var i = 0; i < sortedShifts.length; i++) {
+      if (minutes >= sortedShifts[i].value) {
+        activeShift = sortedShifts[i].key; // Vai atualizando até achar o limite
+      } else {
+        break; // Passou do horário atual, para a busca
+      }
     }
+
+    return activeShift;
   }
 }
 
@@ -4378,6 +4465,11 @@ class _AppTabsControllerState extends State<AppTabsController>
   Timer? _keyboardInactivityTimer;
   final Duration _keyboardInactivityDuration = const Duration(seconds: 5);
 
+  // === NOVAS VARIÁVEIS PARA O PROTETOR DE TELA ===
+  bool _showScreensaver = false;
+  final Duration _screensaverDuration = const Duration(seconds: 60); // 1 Minuto
+  // ===============================================
+
   // NOVAS VARIÁVEIS PARA O POP-UP DE CONFIRMAÇÃO
   bool _showInactivityDialog = false;
   Timer? _countdownTimer;
@@ -4389,10 +4481,6 @@ class _AppTabsControllerState extends State<AppTabsController>
 
   // 1. Lógica para determinar a refeição baseada no horário exato (em minutos)
   int _calculateDefaultShift() {
-    final now = DateTime.now();
-    // Converte a hora atual para minutos totais do dia (ex: 10:30 = 10*60 + 30 = 630)
-    final int minutes = (now.hour * 60) + now.minute;
-
     // DEFINIÇÃO DOS INTERVALOS (baseado no pedido):
     // Café da Manhã: 02:25 - 09:40
     // Almoço: 09:45 - 13:46
@@ -4403,28 +4491,9 @@ class _AppTabsControllerState extends State<AppTabsController>
     // NOTA: Os "buracos" entre horários (ex: 09:41 até 09:44) cairão na refeição anterior
     // ou posterior dependendo da lógica abaixo para garantir que o app sempre tenha um turno.
 
-    // Entre 02:25 (145 min) e 09:44 (584 min) -> Café da Manhã (Turno 1)
-    if (minutes >= 145 && minutes < 585) {
-      return 1;
-    }
-
-    // Entre 09:45 (585 min) e 13:46 (826 min) -> Almoço (Turno 2)
-    if (minutes >= 585 && minutes <= 826) {
-      return 2;
-    }
-
-    // Entre 13:47 (827 min) e 19:09 (1149 min) -> Café da Tarde (Turno 3)
-    if (minutes >= 827 && minutes < 1150) {
-      return 3;
-    }
-
-    // Entre 19:10 (1150 min) e 23:28 (1408 min) -> Jantar (Turno 4)
-    if (minutes >= 1150 && minutes <= 1408) {
-      return 4;
-    }
-
-    // Qualquer outro horário (Das 23:29 até 02:24) -> Ceia (Turno 5)
-    return 5;
+    // Usa a regra centralizada, respeitando os horários editados pelo ADM
+    final appData = Provider.of<AppData>(context, listen: false);
+    return appData.getLiveShift();
   }
 
   // // Método para verificar permissão e mostrar o Dialog explicativo
@@ -4567,18 +4636,34 @@ class _AppTabsControllerState extends State<AppTabsController>
   // INICIA O TIMER DE INATIVIDADE
   void _startInactivityTimer() {
     _inactivityTimer?.cancel();
+    // Puxa as configurações do AppData
+    final appData = Provider.of<AppData>(context, listen: false);
 
-    // Se estiver na aba de Estatísticas (index 2), o tempo de ociosidade
-    // será de apenas 20 segundos. Nas outras, mantém os 45 segundos.
-    Duration duration = _selectedIndex == 2
-        ? const Duration(seconds: 20)
-        : _inactivityDuration;
+    Duration duration;
+
+    // Define tempos diferentes para cada tela
+    if (_selectedIndex == 2) {
+      duration = const Duration(seconds: 20); // 20s nas estatísticas
+    } else if (_selectedIndex == 1) {
+      duration = _inactivityDuration; // 45s nos feedbacks
+    } else {
+      // Tempo dinâmico puxado do painel ADM
+      duration = Duration(seconds: appData.screensaverTimeoutSeconds);
+    }
 
     _inactivityTimer = Timer(duration, () {
-      if ((_selectedIndex == 1 || _selectedIndex == 2) && mounted) {
+      if (!mounted) return;
+
+      if (_selectedIndex == 1 || _selectedIndex == 2) {
+        // Se estiver nas abas de dentro, mostra o aviso para voltar
         _showInactivityConfirmation();
-      } else if (_selectedIndex != 0 && mounted) {
-        _resetToHomeScreen();
+      } else if (_selectedIndex == 0 && !_showScreensaver) {
+        // Verifica se o ADM deixou o protetor de tela ativado
+        if (appData.isScreensaverEnabled) {
+          setState(() {
+            _showScreensaver = true;
+          });
+        }
       }
     });
   }
@@ -4681,7 +4766,7 @@ class _AppTabsControllerState extends State<AppTabsController>
     }
   }
 
-  // VOLTA PARA TELA INICIAL (COM FECHAMENTO DE DIALOGS)
+  // VOLTA PARA TELA INICIAL (COM FECHAMENTO DE DIALOGS E PROTETOR)
   void _resetToHomeScreen() {
     _closeInactivityDialog();
     Navigator.of(context).popUntil((route) => route.isFirst);
@@ -4695,9 +4780,14 @@ class _AppTabsControllerState extends State<AppTabsController>
       _inactivityWarningShown = false;
       _currentFeedbackScreen = null;
       _isResettingFromStay = false;
+      _showScreensaver =
+          false; // Garante que o protetor está desligado ao voltar
     });
 
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+    // Inicia a contagem para o protetor de tela assim que voltar pra Home
+    _startInactivityTimer();
   }
 
   // MÈTODO PÚBLICO
@@ -4705,8 +4795,15 @@ class _AppTabsControllerState extends State<AppTabsController>
     _resetTimerOnInteraction();
   }
 
-  // MÉTODO PRIVADO TAMBÉM
+  // MÉTODO PRIVADO DE RESET
   void _resetTimerOnInteraction() {
+    // 1. SE O PROTETOR ESTIVER ABERTO, FECHA IMEDIATAMENTE!
+    if (_showScreensaver) {
+      setState(() {
+        _showScreensaver = false;
+      });
+    }
+
     if (_showInactivityDialog) {
       _closeInactivityDialog();
     }
@@ -5126,117 +5223,146 @@ class _AppTabsControllerState extends State<AppTabsController>
             // Quando tentar sair, chama a senha com ação 'exit'
             _showPasswordInput('exit');
           },
-          child: Scaffold(
-            appBar: AppBar(
-              title: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // TÍTULO DINÂMICO PARA RESTAURANTE E AMBIENTAÇÃO DA EMPRESA
-                  Text(
-                    // VERIFICA O MODO DO APP
-                    appData.appFunctionality == 1
-                        // CASO 1: RESTAURANTE (Usa os Turnos: Almoço, Jantar, etc.)
-                        ? (_selectedIndex == 0
-                              ? 'Avaliação - ${appData.getPeriodName(_currentShift)}'
-                              : 'Feedbacks - ${appData.getPeriodName(_currentShift)}')
-                        // CASO 2: AMBIENTAÇÃO (Usa o texto fixo "Ambientação da Empresa")
-                        : (_selectedIndex == 0
-                              ? 'Avaliação - Ambientação da Empresa'
-                              : 'Feedbacks - Ambientação da Empresa'),
-                    style: const TextStyle(
-                      fontSize: 18.0,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  if (appData.selectedUnit != null)
-                    Text(
-                      // AGORA MOSTRA UNIDADE E UNIFORME PARA TODAS AS FUNCIONALIDADES
-                      appData.getFullUnitName(),
-                      style: const TextStyle(
-                        fontSize: 12.0,
-                        color: Colors.white70,
-                        fontWeight: FontWeight.normal,
+          // 1. ADICIONAMOS UMA STACK GIGANTE POR FORA DE TUDO
+          child: Stack(
+            children: [
+              // 2. O SEU APLICATIVO NORMAL FICA NA CAMADA DE BAIXO
+              Scaffold(
+                appBar: AppBar(
+                  title: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        appData.appFunctionality == 1
+                            ? (_selectedIndex == 0
+                                  ? 'Avaliação - ${appData.getPeriodName(_currentShift)}'
+                                  : 'Feedbacks - ${appData.getPeriodName(_currentShift)}')
+                            : (_selectedIndex == 0
+                                  ? 'Avaliação - Ambientação da Empresa'
+                                  : 'Feedbacks - Ambientação da Empresa'),
+                        style: const TextStyle(
+                          fontSize: 18.0,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                       ),
-                    ),
-                ],
-              ),
-              backgroundColor: const Color.fromARGB(255, 111, 136, 63),
-              elevation: 4,
-              actions: _selectedIndex == 2
-                  ? [
-                      IconButton(
-                        icon: const Icon(Icons.settings, color: Colors.white),
-                        onPressed: () {
-                          // Abre o painel do ADM
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  const AdminConfigurationPanel(),
+                      if (appData.selectedUnit != null)
+                        Text(
+                          appData.getFullUnitName(),
+                          style: const TextStyle(
+                            fontSize: 12.0,
+                            color: Colors.white70,
+                            fontWeight: FontWeight.normal,
+                          ),
+                        ),
+                    ],
+                  ),
+                  backgroundColor: const Color.fromARGB(255, 111, 136, 63),
+                  elevation: 4,
+                  actions: _selectedIndex == 2
+                      ? [
+                          IconButton(
+                            icon: const Icon(
+                              Icons.settings,
+                              color: Colors.white,
                             ),
-                          );
-                        },
+                            onPressed: () {
+                              _inactivityTimer?.cancel();
+                              _countdownTimer?.cancel();
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const AdminConfigurationPanel(),
+                                ),
+                              ).then((_) {
+                                if (mounted) {
+                                  _resetTimerOnInteraction();
+                                }
+                              });
+                            },
+                          ),
+                        ]
+                      : [],
+                ),
+                body: Stack(
+                  children: [
+                    GestureDetector(
+                      onTap: _resetTimerOnInteraction,
+                      onPanDown: (_) => _resetTimerOnInteraction(),
+                      onScaleStart: (_) => _resetTimerOnInteraction(),
+                      behavior: HitTestBehavior.deferToChild,
+                      child: Container(
+                        color: Colors.transparent,
+                        width: double.infinity,
+                        height: double.infinity,
+                        child: Center(
+                          child: widgetOptions.elementAt(_selectedIndex),
+                        ),
                       ),
-                    ]
-                  : [],
-            ),
-            body: Stack(
-              children: [
-                GestureDetector(
-                  onTap: _resetTimerOnInteraction,
-                  onPanDown: (_) => _resetTimerOnInteraction(),
-                  onScaleStart: (_) => _resetTimerOnInteraction(),
-                  behavior: HitTestBehavior.deferToChild,
-                  child: Container(
-                    color: Colors.transparent,
-                    width: double.infinity,
-                    height: double.infinity,
-                    child: Center(
-                      child: widgetOptions.elementAt(_selectedIndex),
+                    ),
+                    if (_showPasswordDialog) _buildPasswordDialog(),
+                    if (_showInactivityDialog &&
+                        (_selectedIndex == 1 || _selectedIndex == 2))
+                      _buildInactivityConfirmationDialog(),
+                    // NOTA: O Protetor de tela saiu daqui de dentro do body!
+                  ],
+                ),
+                bottomNavigationBar: Container(
+                  color: Colors.white,
+                  padding: const EdgeInsets.only(bottom: 50.0, top: 0),
+                  child: BottomNavigationBar(
+                    elevation: 0,
+                    backgroundColor: Colors.white,
+                    items: const <BottomNavigationBarItem>[
+                      BottomNavigationBarItem(
+                        icon: Icon(Icons.insert_emoticon_rounded),
+                        label: 'Avaliações',
+                      ),
+                      BottomNavigationBarItem(
+                        icon: Icon(Icons.task_alt_rounded),
+                        label: 'Feedbacks',
+                      ),
+                      BottomNavigationBarItem(
+                        icon: Icon(Icons.bar_chart),
+                        label: 'Estatísticas',
+                      ),
+                    ],
+                    selectedLabelStyle: const TextStyle(
+                      fontSize: 16.0,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    unselectedLabelStyle: const TextStyle(fontSize: 14.0),
+                    currentIndex: _selectedIndex,
+                    selectedItemColor: Colors.green.shade700,
+                    onTap: (index) {
+                      _resetTimerOnInteraction();
+                      _onItemTapped(index);
+                    },
+                  ),
+                ),
+              ),
+
+              // 3. A CAMADA DO PROTETOR DE TELA FICA POR CIMA DE TUDO (Cobrindo as barras)
+              if (_showScreensaver)
+                Positioned.fill(
+                  child: GestureDetector(
+                    onTap: _resetTimerOnInteraction,
+                    onPanDown: (_) => _resetTimerOnInteraction(),
+                    behavior: HitTestBehavior.opaque,
+                    child: Container(
+                      color: const Color(0xFF2B0934),
+                      child: Center(
+                        child: Image.asset(
+                          'assets/images/gif_ociosidade_app.gif',
+                          fit: BoxFit.contain,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-                if (_showPasswordDialog) _buildPasswordDialog(),
-                if (_showInactivityDialog &&
-                    (_selectedIndex == 1 || _selectedIndex == 2))
-                  _buildInactivityConfirmationDialog(),
-              ],
-            ),
-            bottomNavigationBar: Container(
-              color: Colors.white, // Garante fundo branco para o container
-              padding: const EdgeInsets.only(bottom: 50.0, top: 0), // SOBE 20px
-              child: BottomNavigationBar(
-                elevation: 0, // Remove a sombra interna para não duplicar
-                backgroundColor: Colors.white,
-                items: const <BottomNavigationBarItem>[
-                  BottomNavigationBarItem(
-                    icon: Icon(Icons.insert_emoticon_rounded),
-                    label: 'Avaliações',
-                  ),
-                  BottomNavigationBarItem(
-                    icon: Icon(Icons.task_alt_rounded),
-                    label: 'Feedbacks',
-                  ),
-                  BottomNavigationBarItem(
-                    icon: Icon(Icons.bar_chart),
-                    label: 'Estatísticas',
-                  ),
-                ],
-                selectedLabelStyle: const TextStyle(
-                  fontSize: 16.0,
-                  fontWeight: FontWeight.bold,
-                ),
-                unselectedLabelStyle: const TextStyle(fontSize: 14.0),
-                currentIndex: _selectedIndex,
-                selectedItemColor: Colors.green.shade700,
-                onTap: (index) {
-                  _resetTimerOnInteraction();
-                  _onItemTapped(index);
-                },
-              ),
-            ),
+            ],
           ),
         );
       },
@@ -7946,70 +8072,207 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
 }
 
 // ===================================================================
-// TELA DE PAINEL DO ADMINISTRADOR
+// TELA DE PAINEL DO ADMINISTRADOR (COM TIMER PRÓPRIO)
 // ===================================================================
-class AdminConfigurationPanel extends StatelessWidget {
+class AdminConfigurationPanel extends StatefulWidget {
   const AdminConfigurationPanel({super.key});
+
+  @override
+  State<AdminConfigurationPanel> createState() =>
+      _AdminConfigurationPanelState();
+}
+
+class _AdminConfigurationPanelState extends State<AdminConfigurationPanel> {
+  Timer? _adminTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _startAdminTimer();
+  }
+
+  @override
+  void dispose() {
+    _adminTimer?.cancel();
+    super.dispose();
+  }
+
+  // Timer exclusivo de 60 segundos para o painel ADM
+  void _startAdminTimer() {
+    _adminTimer?.cancel();
+    _adminTimer = Timer(const Duration(seconds: 60), () {
+      if (mounted) {
+        Navigator.of(context).pop(); // Volta para as estatísticas
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Painel ADM fechado por inatividade.')),
+        );
+      }
+    });
+  }
+
+  // Sempre que houver interação, o tempo reseta para mais 60 segundos
+  void _resetAdminTimer() {
+    _startAdminTimer();
+  }
 
   @override
   Widget build(BuildContext context) {
     final appData = Provider.of<AppData>(context);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Painel de Controle ADM',
-          style: TextStyle(color: Colors.white),
+    // O GestureDetector escuta qualquer toque na tela e reseta o relógio
+    return GestureDetector(
+      onTap: _resetAdminTimer,
+      onPanDown: (_) => _resetAdminTimer(),
+      behavior: HitTestBehavior.translucent,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text(
+            'Painel de Controle ADM',
+            style: TextStyle(color: Colors.white),
+          ),
+          backgroundColor: const Color.fromARGB(255, 111, 136, 63),
+          iconTheme: const IconThemeData(color: Colors.white),
         ),
-        backgroundColor: const Color.fromARGB(255, 111, 136, 63),
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // SEÇÃO DE ACESSIBILIDADE
-          Card(
-            child: SwitchListTile(
-              title: const Text('Botão de Áudio (Alto-falante)'),
-              subtitle: const Text(
-                'Exibe um ícone para ler os textos em voz alta',
+        body: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            // SEÇÃO DE ACESSIBILIDADE
+            Card(
+              child: SwitchListTile(
+                title: const Text('Botão de Áudio (Alto-falante)'),
+                subtitle: const Text(
+                  'Exibe um ícone para ler os textos em voz alta',
+                ),
+                value: appData.isTextToSpeechEnabled,
+                onChanged: (val) {
+                  _resetAdminTimer();
+                  appData.toggleTextToSpeech(val);
+                },
+                activeColor: const Color.fromARGB(255, 111, 136, 63),
               ),
-              value: appData.isTextToSpeechEnabled,
-              onChanged: (val) => appData.toggleTextToSpeech(val),
-              activeColor: const Color.fromARGB(255, 111, 136, 63),
             ),
-          ),
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
 
-          // SEÇÃO DE TEXTOS
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Configuração da Tela Atual',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
-                  ListTile(
-                    title: const Text('Título da Página Inicial'),
-                    subtitle: Text(
-                      appData.currentTitle,
-                    ), // Mostra o título do ambiente que está rodando
-                    trailing: const Icon(Icons.edit, color: Colors.blue),
-                    onTap: () => _editTitleDialog(
-                      context,
-                      appData,
-                      appData.appFunctionality,
-                    ), // Envia apenas o ID do ambiente atual
-                  ),
-                ],
+            // SEÇÃO DE TEXTOS
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Configuração da Tela Atual',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ListTile(
+                      title: const Text('Título da Página Inicial'),
+                      subtitle: Text(appData.currentTitle),
+                      trailing: const Icon(Icons.edit, color: Colors.blue),
+                      onTap: () {
+                        _resetAdminTimer();
+                        _editTitleDialog(
+                          context,
+                          appData,
+                          appData.appFunctionality,
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+
+            // SEÇÃO: PROTETOR DE TELA
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Protetor de Tela (GIF Animado)',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SwitchListTile(
+                      title: const Text('Ativar Protetor de Tela'),
+                      subtitle: const Text(
+                        'Mostra uma animação após um tempo de inatividade na tela inicial.',
+                      ),
+                      value: appData.isScreensaverEnabled,
+                      onChanged: (val) {
+                        _resetAdminTimer();
+                        appData.toggleScreensaver(val);
+                      },
+                      activeColor: const Color.fromARGB(255, 111, 136, 63),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    if (appData.isScreensaverEnabled)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Tempo de Inatividade para Exibir'),
+                        subtitle: Text(
+                          'Atualmente: ${appData.screensaverTimeoutSeconds} segundos',
+                        ),
+                        trailing: const Icon(Icons.timer, color: Colors.blue),
+                        onTap: () {
+                          _resetAdminTimer();
+                          _showScreensaverTimeoutDialog(context, appData);
+                        },
+                      ),
+                  ],
+                ),
+              ),
+            ),
+
+            // SEÇÃO: CONFIGURAÇÃO DE TURNOS
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Configuração de Turnos',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ListTile(
+                      title: const Text('Horários de Início'),
+                      subtitle: const Text(
+                        'Personalize o horário em que cada refeição começa',
+                      ),
+                      trailing: const Icon(
+                        Icons.access_time,
+                        color: Colors.blue,
+                      ),
+                      onTap: () {
+                        _resetAdminTimer();
+                        showDialog(
+                          context: context,
+                          builder: (context) => ShiftSettingsDialog(
+                            onInteraction: _resetAdminTimer,
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -8020,28 +8283,199 @@ class AdminConfigurationPanel extends StatelessWidget {
     );
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Editar Título Inicial'),
-        content: TextField(
-          controller: controller,
-          maxLines: 2,
-          decoration: const InputDecoration(border: OutlineInputBorder()),
+      builder: (context) => GestureDetector(
+        onTap: _resetAdminTimer,
+        onPanDown: (_) => _resetAdminTimer(),
+        behavior: HitTestBehavior.translucent,
+        child: AlertDialog(
+          title: const Text('Editar Título Inicial'),
+          content: TextField(
+            controller: controller,
+            maxLines: 2,
+            decoration: const InputDecoration(border: OutlineInputBorder()),
+            onChanged: (_) => _resetAdminTimer(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                _resetAdminTimer();
+                Navigator.pop(context);
+              },
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                _resetAdminTimer();
+                appData.updateTitle(funcId, controller.text.trim());
+                Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color.fromARGB(255, 111, 136, 63),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Salvar'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showScreensaverTimeoutDialog(BuildContext context, AppData appData) {
+    final TextEditingController controller = TextEditingController(
+      text: appData.screensaverTimeoutSeconds.toString(),
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) => GestureDetector(
+        onTap: _resetAdminTimer,
+        onPanDown: (_) => _resetAdminTimer(),
+        behavior: HitTestBehavior.translucent,
+        child: AlertDialog(
+          title: const Text('Tempo do Protetor de Tela'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Defina em segundos quanto tempo o tablet deve aguardar na tela inicial para exibir a animação:',
+              ),
+              const SizedBox(height: 15),
+              TextField(
+                controller: controller,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: const InputDecoration(
+                  suffixText: 'segundos',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => _resetAdminTimer(),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                _resetAdminTimer();
+                Navigator.pop(context);
+              },
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                _resetAdminTimer();
+                int? newValue = int.tryParse(controller.text);
+                if (newValue != null && newValue >= 5) {
+                  // Mínimo de 5 segundos
+                  appData.setScreensaverTimeout(newValue);
+                  Navigator.pop(context);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color.fromARGB(255, 111, 136, 63),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Salvar'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ===================================================================
+// WIDGET PARA EDITAR O HORÁRIO DOS TURNOS
+// ===================================================================
+class ShiftSettingsDialog extends StatelessWidget {
+  final VoidCallback onInteraction;
+
+  const ShiftSettingsDialog({super.key, required this.onInteraction});
+
+  String _formatMinutesToTime(int minutes) {
+    final int hours = minutes ~/ 60;
+    final int mins = minutes % 60;
+    return '${hours.toString().padLeft(2, '0')}:${mins.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final appData = Provider.of<AppData>(context);
+
+    if (appData.appFunctionality == 2) {
+      return GestureDetector(
+        onTap: onInteraction,
+        onPanDown: (_) => onInteraction(),
+        behavior: HitTestBehavior.translucent,
+        child: AlertDialog(
+          title: const Text('Horários dos Turnos'),
+          content: const Text(
+            'A Ambientação da Empresa não utiliza separação por horários de refeição.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                onInteraction();
+                Navigator.pop(context);
+              },
+              child: const Text('Fechar'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return GestureDetector(
+      onTap: onInteraction,
+      onPanDown: (_) => onInteraction(),
+      behavior: HitTestBehavior.translucent,
+      child: AlertDialog(
+        title: const Text('Horários de Início das Refeições'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: 5,
+            itemBuilder: (context, index) {
+              final shiftId = index + 1;
+              final minutes = appData.shiftStartTimes[shiftId] ?? 0;
+
+              return ListTile(
+                title: Text(
+                  appData.getPeriodName(shiftId),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: Text('Inicia às: ${_formatMinutesToTime(minutes)}'),
+                trailing: const Icon(Icons.edit, color: Colors.green),
+                onTap: () async {
+                  onInteraction(); // Avisa que tocou antes de abrir o relógio nativo
+                  final TimeOfDay? newTime = await showTimePicker(
+                    context: context,
+                    initialTime: TimeOfDay(
+                      hour: minutes ~/ 60,
+                      minute: minutes % 60,
+                    ),
+                    helpText:
+                        'INÍCIO - ${appData.getPeriodName(shiftId).toUpperCase()}',
+                  );
+                  onInteraction(); // Avisa que o relógio nativo foi fechado
+
+                  if (newTime != null) {
+                    final newMinutes = (newTime.hour * 60) + newTime.minute;
+                    appData.updateShiftStartTime(shiftId, newMinutes);
+                  }
+                },
+              );
+            },
+          ),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
             onPressed: () {
-              appData.updateTitle(funcId, controller.text.trim());
+              onInteraction();
               Navigator.pop(context);
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color.fromARGB(255, 111, 136, 63),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Salvar'),
+            child: const Text('Fechar'),
           ),
         ],
       ),
