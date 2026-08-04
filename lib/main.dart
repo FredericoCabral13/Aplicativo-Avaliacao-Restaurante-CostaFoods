@@ -3097,20 +3097,13 @@ Arquivo contém dados completos das avaliações dos clientes.
   //   }
   // }
 
-  // MÉTODO PARA FORMATAR A UNIDADE NO CSV (CORRIGIDO)
+  // MÉTODO PARA FORMATAR A UNIDADE NO CSV
   String _getUnitForCSV() {
     String unidade = _selectedUnit ?? 'Não definida';
 
     if (_selectedUniformType != null && _selectedUniformType!.isNotEmpty) {
-      String uniforme = _selectedUniformType!;
-      if (uniforme == 'Uniforme Branco')
-        uniforme = 'Branco';
-      else if (uniforme == 'Uniforme Colorido')
-        uniforme = 'Colorido';
-      else if (uniforme == 'Administrativo')
-        uniforme = 'Admin';
-
-      return '$unidade - $uniforme';
+      // Retorna exatamente o nome da unidade e o nome do uniforme, sem abreviações
+      return '$unidade - ${_selectedUniformType!}';
     }
 
     return unidade;
