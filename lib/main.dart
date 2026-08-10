@@ -8059,6 +8059,25 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
             },
           ),
         ),
+        // ==========================================
+        // NOVA LOGO NO CANTO INFERIOR DIREITO
+        // ==========================================
+        Positioned(
+          bottom: 15, // Distância do rodapé
+          left:
+              15, // Distância da lateral direita (65 fica alinhado com a aba de avaliações)
+          child: Opacity(
+            opacity:
+                0.8, // Deixa 80% visível para não ofuscar os emojis (ajuste se quiser)
+            child: Image.asset(
+              'assets/images/logo_ACF.png', // <-- NOME DO ARQUIVO DA SUA LOGO
+              // Tamanho responsivo de acordo com a tela do tablet
+              width: isSmallScreen ? 60 : (isLargeScreen ? 140 : 100),
+              fit: BoxFit.contain,
+            ),
+          ),
+        ),
+        // ==========================================
       ],
     );
   }
