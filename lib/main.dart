@@ -7855,7 +7855,7 @@ class _RatingSelectionScreenState extends State<RatingSelectionScreen> {
                     builder: (context, appData, child) {
                       final now = DateTime.now();
                       final todayFormatted =
-                          '${now.day}/${now.month}/${now.year}';
+                          '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
                       return Text(
                         'Hoje: $todayFormatted',
                         style: TextStyle(
